@@ -78,17 +78,19 @@ const themeVars = useThemeVars()
 
 <template>
     <NFlex vertical>
-        <NFlex justify="center">
-            <NCard class="stat">
-              <NStatistic label="天气上游 API 响应错误" :value="weatherError"/>
-            </NCard>
-            <NCard class="stat">
-              <NStatistic label="WebSocket 异常断连" :value="wsDisconnect"/>
-            </NCard>
-            <NCard class="stat">
-             <NStatistic label="正在连接的客户端数量" :value="clientsCount"/>
-            </NCard>
-        </NFlex>
+        <NCard title="今日统计">
+            <NFlex justify="center">
+                <NCard class="stat">
+                  <NStatistic label="天气上游 API 响应错误" :value="weatherError"/>
+                </NCard>
+                <NCard class="stat">
+                  <NStatistic label="WebSocket 异常断连" :value="wsDisconnect"/>
+                </NCard>
+                <NCard class="stat">
+                 <NStatistic label="正在连接的客户端数量" :value="clientsCount"/>
+                </NCard>
+            </NFlex>
+        </NCard>
         <NCard title="各班详情">
             <n-table :bordered="false" :single-line="false">
                 <n-thead>
