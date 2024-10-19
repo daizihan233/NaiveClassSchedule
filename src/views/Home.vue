@@ -1,6 +1,8 @@
 <script setup>
 import { useRequest } from 'vue-request';
-import { NCard, NStatistic, NFlex, NTable, NTh, NTd, NTr, NThead, NTbody } from 'naive-ui';
+import {
+    NCard, NStatistic, NFlex, NTable, NTh, NTd, NTr, NThead, NTbody, useThemeVars, NHighlight
+} from 'naive-ui';
 import axios from 'axios';
 import {computed, reactive, ref} from "vue";
 import gsap from 'gsap';
@@ -71,6 +73,7 @@ const clientsCount = computed(() => {
     // noinspection JSCheckFunctionSignatures
     return parseInt(statInfo.clients).toLocaleString();
 });
+const themeVars = useThemeVars()
 </script>
 
 <template>
@@ -98,7 +101,20 @@ const clientsCount = computed(() => {
                 <n-tbody>
                   <n-tr v-for="[className, status, count] in statTable">
                     <n-td>{{ className }}</n-td>
-                    <n-td>{{ status }}</n-td>
+                    <n-td>
+                        <n-highlight
+                          :text="status"
+                          :patterns="['保持连接']"
+                          :highlight-style="{
+                            padding: '0 6px',
+                            borderRadius: themeVars.borderRadius,
+                            display: 'inline-block',
+                            color: themeVars.baseColor,
+                            background: themeVars.primaryColor,
+                            transition: `all .3s ${themeVars.cubicBezierEaseInOut}`,
+                          }"
+                        />
+                    </n-td>
                     <n-td>{{ count }}</n-td>
                   </n-tr>
                 </n-tbody>
