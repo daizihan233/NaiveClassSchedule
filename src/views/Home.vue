@@ -1,12 +1,46 @@
 <script setup>
-import { useRequest } from 'vue-request';
-import {
-    NCard, NStatistic, NFlex, NTable, NTh, NTd, NTr, NThead, NTbody, useThemeVars, NHighlight
-} from 'naive-ui';
+import {useRequest} from 'vue-request';
+import {NCard, NDataTable, NFlex, NStatistic, NTag, useThemeVars} from 'naive-ui';
 import axios from 'axios';
-import {computed, reactive, ref} from "vue";
+import {computed, h, reactive, ref} from "vue";
 import gsap from 'gsap';
 
+const columns = [
+  {
+      title: '学校',
+      key: 'name',
+      defaultSortOrder: false,
+      sorter: 'default'
+  },
+  {
+      title: '连接状态',
+      key: 'status',
+      defaultSortOrder: false,
+      sorter: 'default',
+      render(row) {
+          return h(
+                NTag,
+                {
+                    style: {
+                        marginRight: '6px'
+                    },
+                    type: row.status === '已断开连接' ? "error" : 'success',
+                    bordered: false
+                },
+                {
+                    default: () => row.status
+                }
+            )
+
+      }
+  },
+  {
+      title: '今日异常断连次数',
+      key: 'disconnect',
+      defaultSortOrder: false,
+      sorter: (row1, row2) => row1.disconnect - row2.disconnect
+  }
+]
 const getStatistic = () => {
   return new Promise(resolve => {
     setTimeout(() => {
@@ -56,8 +90,15 @@ useRequest(
             else
                 statMap[name] = ["保持连接", 0];
         }
-        for (let [key, value] of Object.entries(statMap)) {
-            statTable.value.push([key, value[0], value[1]]);
+        for (let [keys, value] of Object.entries(statMap)) {
+            statTable.value.push(
+                {
+                    key: keys,
+                    name: keys,
+                    status: value[0],
+                    disconnect: value[1]
+                }
+            )
         }
         console.log(statTable);
       }
@@ -73,7 +114,7 @@ const clientsCount = computed(() => {
     // noinspection JSCheckFunctionSignatures
     return parseInt(statInfo.clients).toLocaleString();
 });
-const themeVars = useThemeVars()
+useThemeVars();
 </script>
 
 <template>
@@ -92,35 +133,11 @@ const themeVars = useThemeVars()
             </NFlex>
         </NCard>
         <NCard title="各班详情">
-            <n-table :bordered="false" :single-line="false">
-                <n-thead>
-                  <n-tr>
-                    <n-th>班级</n-th>
-                    <n-th>连接状态</n-th>
-                    <n-th>异常断连次数</n-th>
-                  </n-tr>
-                </n-thead>
-                <n-tbody>
-                  <n-tr v-for="[className, status, count] in statTable">
-                    <n-td>{{ className }}</n-td>
-                    <n-td>
-                        <n-highlight
-                          :text="status"
-                          :patterns="['保持连接']"
-                          :highlight-style="{
-                            padding: '0 6px',
-                            borderRadius: themeVars.borderRadius,
-                            display: 'inline-block',
-                            color: themeVars.baseColor,
-                            background: themeVars.primaryColor,
-                            transition: `all .3s ${themeVars.cubicBezierEaseInOut}`,
-                          }"
-                        />
-                    </n-td>
-                    <n-td>{{ count }}</n-td>
-                  </n-tr>
-                </n-tbody>
-              </n-table>
+            <n-data-table
+              ref="dataTableInst"
+              :columns="columns"
+              :data="statTable"
+            />
         </NCard>
     </NFlex>
 </template>
