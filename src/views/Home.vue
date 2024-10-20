@@ -7,7 +7,7 @@ import gsap from 'gsap';
 
 const columns = [
   {
-      title: '学校',
+      title: '班级',
       key: 'name',
       defaultSortOrder: false,
       sorter: 'default'
