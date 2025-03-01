@@ -4,6 +4,7 @@ import {NCard, NDataTable, NFlex, NStatistic, NTag, useThemeVars} from 'naive-ui
 import axios from 'axios';
 import {computed, h, reactive, ref} from "vue";
 import gsap from 'gsap';
+import APISRV from '../global.js'
 
 const columns = [
   {
@@ -44,7 +45,7 @@ const columns = [
 const getStatistic = () => {
   return new Promise(resolve => {
     setTimeout(() => {
-      resolve(axios.get('https://class.khbit.cn/api/statistic'));
+      resolve(axios.get(`${APISRV}/web/statistic`));
     }, 1000);
   });
 }
