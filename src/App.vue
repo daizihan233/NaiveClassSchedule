@@ -36,13 +36,13 @@
 <script setup>
 import {computed, h, ref} from "vue";
 import {
-  NIcon, NMenu, NSpace, NSwitch, NLayout, NLayoutSider, NConfigProvider,
+  NIcon, NMenu, NSpace, NLayout, NLayoutSider, NConfigProvider,
   darkTheme, NDialogProvider, NMessageProvider, useOsTheme
 } from "naive-ui";
 import { RouterLink } from "vue-router";
-import {
-  LogOutOutline as HomeIcon
-} from "@vicons/ionicons5";
+import {useRequest} from "vue-request";
+import axios from "axios";
+import global from "@/global.js";
 
 const osThemeRef = useOsTheme();
 let theme = computed(() => osThemeRef.value === "dark" ? darkTheme : null);
@@ -52,20 +52,75 @@ function renderIcon(icon) {
 }
 
 // noinspection JSUnusedGlobalSymbols
-const menuOptions = [
-  {
-    label: () => h(
-      RouterLink,
-      {
-        to: {
-          name: "Home"
+let menuOptions = ref(
+    [
+        {
+            label: () => h(
+              RouterLink,
+              {
+                to: {
+                  name: "Home"
+                }
+              },
+              { default: () => "总览" }
+            ),
+            key: "go-back-home"
         }
+    ]
+);
+const getMenu = () => {
+  return new Promise(resolve => {
+    setTimeout(() => {
+      resolve(axios.get(`${global.APISRV}/web/menu`));
+    }, 1000);
+  });
+}
+function resolveMenuItem(menuItem) {
+    console.log(menuItem)
+    if (menuItem === null) return null;
+    if (menuItem instanceof Array)
+        return menuItem.map(
+            (item) => {
+                return resolveMenuItem(item)
+            }
+        )
+    return {
+        label: () => h(
+            RouterLink,
+            {
+                to: menuItem['to']
+            },
+            {default: () => menuItem['text']}
+        ),
+        key: menuItem['key'],
+        children: resolveMenuItem(menuItem['children'])
+    }
+}
+useRequest(
+    getMenu,
+    {
+      initialData: {
+          "data": [
+              {
+                  "to": "/",
+                  "text": "总览",
+                  "key": "go-back-home",
+                  "children": null
+              }
+        ]
       },
-      { default: () => "总览" }
-    ),
-    key: "go-back-home",
-    icon: renderIcon(HomeIcon)
-  }
-];
-let activeKey =  ref(null), collapsed = ref(true)
+      onSuccess: (response) => {
+          console.log(response.data);
+          let menu = []
+          for (let datumElement of response.data['data']) {
+              menu.push(
+                  resolveMenuItem(datumElement)
+              )
+          }
+          menuOptions.value = menu;
+      }
+    }
+);
+
+let activeKey =  ref(null), collapsed = ref(false)
 </script>

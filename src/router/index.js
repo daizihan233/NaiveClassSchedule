@@ -10,6 +10,11 @@ const router = createRouter(
                 component: () => import("../views/Home.vue")
             },
             {
+                path: '/config/:school/subjects',
+                name: 'Subjects',
+                component: () => import("../views/SubjectsConfig.vue")
+            },
+            {
                 path: '/404',
                 name: '404',
                 component: () => import("../views/NotFound.vue")
