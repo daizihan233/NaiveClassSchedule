@@ -1,5 +1,5 @@
 <template>
-  <n-config-provider :theme="theme" date-locale="dateZhCN" locale="zhCN" class="full">
+  <n-config-provider :theme="theme" date-locale="dateZhCN" locale="zhCN" class="full" :hljs="hljs">
     <n-message-provider class="full">
       <n-dialog-provider class="full">
         <n-space vertical class="full">
@@ -43,6 +43,10 @@ import { RouterLink } from "vue-router";
 import {useRequest} from "vue-request";
 import axios from "axios";
 import {APISRV} from "@/global.js";
+import hljs from 'highlight.js/lib/core'
+import json from 'highlight.js/lib/languages/json'
+
+hljs.registerLanguage('json', json)
 
 const osThemeRef = useOsTheme();
 let theme = computed(() => osThemeRef.value === "dark" ? darkTheme : null);
@@ -113,6 +117,8 @@ useRequest(
               )
           }
           menuOptions.value = menu;
+          console.log(menu);
+          console.log(menuOptions.value)
       }
     }
 );
