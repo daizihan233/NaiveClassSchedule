@@ -15,6 +15,21 @@ const router = createRouter(
                 component: () => import("../views/SubjectsConfig.vue")
             },
             {
+                path: '/config/:school/:grade/timetable',
+                name: 'Subjects',
+                component: () => import("../views/TimetableConfig.vue")
+            },
+            {
+                path: '/config/:school/:grade/:cls/schedule',
+                name: 'Subjects',
+                component: () => import("../views/ScheduleConfig.vue")
+            },
+            {
+                path: '/config/:school/:grade/:cls/settings',
+                name: 'Subjects',
+                component: () => import("../views/SettingsConfig.vue")
+            },
+            {
                 path: '/404',
                 name: '404',
                 component: () => import("../views/NotFound.vue")
