@@ -36,7 +36,7 @@
 <script setup>
 import {computed, h, ref} from "vue";
 import {
-  NIcon, NMenu, NSpace, NLayout, NLayoutSider, NConfigProvider,
+  NMenu, NSpace, NLayout, NLayoutSider, NConfigProvider,
   darkTheme, NDialogProvider, NMessageProvider, useOsTheme
 } from "naive-ui";
 import { RouterLink } from "vue-router";
@@ -46,11 +46,6 @@ import {APISRV} from "@/global.js";
 
 const osThemeRef = useOsTheme();
 let theme = computed(() => osThemeRef.value === "dark" ? darkTheme : null);
-
-function renderIcon(icon) {
-  return () => h(NIcon, null, { default: () => h(icon) });
-}
-
 // noinspection JSUnusedGlobalSymbols
 let menuOptions = ref(
     [
