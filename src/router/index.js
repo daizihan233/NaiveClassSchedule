@@ -16,17 +16,17 @@ const router = createRouter(
             },
             {
                 path: '/config/:school/:grade/timetable',
-                name: 'Subjects',
+                name: 'Timetable',
                 component: () => import("../views/TimetableConfig.vue")
             },
             {
                 path: '/config/:school/:grade/:cls/schedule',
-                name: 'Subjects',
+                name: 'Schedule',
                 component: () => import("../views/ScheduleConfig.vue")
             },
             {
                 path: '/config/:school/:grade/:cls/settings',
-                name: 'Subjects',
+                name: 'Settings',
                 component: () => import("../views/SettingsConfig.vue")
             },
             {
