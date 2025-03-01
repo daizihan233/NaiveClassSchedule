@@ -42,7 +42,7 @@ import {
 import { RouterLink } from "vue-router";
 import {useRequest} from "vue-request";
 import axios from "axios";
-import global from "@/global.js";
+import {APISRV} from "@/global.js";
 
 const osThemeRef = useOsTheme();
 let theme = computed(() => osThemeRef.value === "dark" ? darkTheme : null);
@@ -71,7 +71,7 @@ let menuOptions = ref(
 const getMenu = () => {
   return new Promise(resolve => {
     setTimeout(() => {
-      resolve(axios.get(`${global.APISRV}/web/menu`));
+      resolve(axios.get(`${APISRV}/web/menu`));
     }, 1000);
   });
 }
