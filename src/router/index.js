@@ -10,7 +10,7 @@ const router = createRouter(
                 component: () => import("../views/Home.vue")
             },
             {
-                path: '/config/:school/subjects',
+                path: '/config/:school/:class/subjects',
                 name: 'Subjects',
                 component: () => import("../views/SubjectsConfig.vue")
             },
