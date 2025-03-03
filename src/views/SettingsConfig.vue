@@ -66,6 +66,7 @@ function okay() {
                 console.log(response.data)
                 console.log(response.status)
                 messages.success("服务端说行")
+                showModal.value = false
             },
             onError: (error) => {
                 console.log(error.status)
