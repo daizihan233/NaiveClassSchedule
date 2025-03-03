@@ -1,25 +1,69 @@
 <script setup>
 import {
-    NForm, NFormItem, NInput, NButton, NFlex, NCode, NCard, NStatistic, NModal, NSpace, useMessage
+    NForm, NFormItem, NInput, NButton, NFlex, NCode, NCard, NStatistic, NModal, NSpace,
+    NSelect, useMessage
 } from "naive-ui";
 import {reactive, ref, computed} from "vue";
-import {zip} from "@/utils.js";
 import axios from "axios";
 import {APISRV} from "@/global.js";
 import {useRequest} from "vue-request";
 import {useRoute} from "vue-router";
 
 const route = useRoute();
-
+const week = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+let optionsLst = ref([])
 const school = computed(() => route.params.school).value;
 const grade = computed(() => route.params.grade).value;
 const cls = computed(() => route.params.cls).value;
 const formRef = ref(null);
 let pwd = ref('');
+let needs = {}
 
 const dynamicForm = reactive({
-  abbr: [{ text: "" }],
-  fullName: [{ text: "" }]
+  "daily_class":[
+    {
+      "Chinese":"日",
+      "English":"SUN",
+      "classList":[],
+      "timetable":"常日"
+    },
+    {
+      "Chinese":"一",
+      "English":"MON",
+      "classList":[],
+      "timetable":"常日"
+    },
+    {
+      "Chinese":"二",
+      "English":"TUE",
+      "classList":[],
+      "timetable":"常日"
+    },
+    {
+      "Chinese":"三",
+      "English":"WED",
+      "classList":[],
+      "timetable":"常日"
+    },
+    {
+      "Chinese":"四",
+      "English":"THR",
+      "classList":[],
+      "timetable":"常日"
+    },
+    {
+      "Chinese":"五",
+      "English":"FRI",
+      "classList":[],
+      "timetable":"常日"
+    },
+    {
+      "Chinese":"六",
+      "English":"SAT",
+      "classList":[],
+      "timetable":"常日"
+    }
+  ]
 });
 
 const removeItem = (index) => {
@@ -40,10 +84,10 @@ function submit() {
     showModal.value = true;
 }
 
-const putSubjects = () => {
+const putSchedule = () => {
     return Promise.resolve(
         axios.put(
-            `${APISRV}/web/config/${school}/${grade}/subjects`,
+            `${APISRV}/web/config/${school}/${grade}/${cls}/schedule`,
             formRef.value,
             {
                 auth: {
@@ -54,13 +98,12 @@ const putSubjects = () => {
         )
     );
 }
-
 const messages = useMessage();
 function okay() {
     disabledButton.value = true
     buttonText.value = "你等会儿"
     useRequest(
-        putSubjects,
+        putSchedule,
         {
             onSuccess: (response) => {
                 console.log(response.data)
@@ -84,21 +127,87 @@ function okay() {
     disabledButton.value = false
 }
 
-const getSubjects = () => {
-  return Promise.resolve(axios.get(`${APISRV}/web/config/${school}/${grade}/subjects`));
+const getSchedule = () => {
+  return Promise.resolve(axios.get(`${APISRV}/web/config/${school}/${grade}/${cls}/schedule`));
+}
+
+const getOptions = () => {
+  return Promise.resolve(axios.get(`${APISRV}/web/config/${school}/${grade}/timetable/options`));
 }
 
 useRequest(
-    getSubjects,
+    getSchedule,
     {
       initialData: {
-          "abbr": [],
-          "fullName": []
+          "daily_class":[
+            {
+              "Chinese":"日",
+              "English":"SUN",
+              "classList":[],
+              "timetable":"常日"
+            },
+            {
+              "Chinese":"一",
+              "English":"MON",
+              "classList":[],
+              "timetable":"常日"
+            },
+            {
+              "Chinese":"二",
+              "English":"TUE",
+              "classList":[],
+              "timetable":"常日"
+            },
+            {
+              "Chinese":"三",
+              "English":"WED",
+              "classList":[],
+              "timetable":"常日"
+            },
+            {
+              "Chinese":"四",
+              "English":"THR",
+              "classList":[],
+              "timetable":"常日"
+            },
+            {
+              "Chinese":"五",
+              "English":"FRI",
+              "classList":[],
+              "timetable":"常日"
+            },
+            {
+              "Chinese":"六",
+              "English":"SAT",
+              "classList":[],
+              "timetable":"常日"
+            }
+          ]
+        },
+      onSuccess: (response) => {
+          console.log(response.data);
+          dynamicForm.daily_class = response.data['daily_class'];
+      }
+    }
+);
+
+useRequest(
+    getOptions,
+    {
+      initialData: {
+          'options': []
       },
       onSuccess: (response) => {
           console.log(response.data);
-          dynamicForm.abbr = response.data['abbr'];
-          dynamicForm.fullName = response.data['fullName'];
+          for (let datumElement of response.data['options']) {
+              optionsLst.value.push(
+                  {
+                      label: datumElement['label'],
+                      value: datumElement['value']
+                  }
+              )
+              needs[datumElement['label']] = datumElement['need']
+          }
       }
     }
 );
@@ -120,45 +229,29 @@ useRequest(
             </NFlex>
         </NCard>
         <NCard title="配置表单">
-            <n-form ref="formRef" :model="dynamicForm" class="center" :show-label="false">
-                <n-form-item class="center" v-for="(item, index) in zip(dynamicForm.abbr, dynamicForm.fullName)">
-                    <n-flex justify="center" size="large" class="center">
+            <n-form ref="formRef" :model="dynamicForm" class="center">
+                <n-space vertical>
+                    <NCard v-for="(item, index) in week" :title="item">
                         <n-form-item
-                          :key="index"
-                          :label="`课程 ${index + 1} 缩写`"
-                          :path="`abbr[${index}].text`"
-                          :rule="{
-                            required: true,
-                            message: `课程 ${index + 1} 缩写`,
-                            trigger: ['input', 'blur'],
-                          }"
+                            :key="index"
+                            :label="`${item} 所用作息表`"
+                            :path="`daily_class[${index}]['timetable']`"
+                            :rule="{
+                              required: true,
+                            }"
                         >
-                          <n-input v-model:value="item[0].text" clearable />
+                            <n-select
+                              placeholder="选一个吧"
+                              :options="optionsLst"
+                              v-model:value="dynamicForm.daily_class[index]['timetable']"
+                            />
                         </n-form-item>
-                        <n-form-item
-                          :key="index"
-                          :label="`课程 ${index + 1} 全写`"
-                          :path="`fullName[${index}].text`"
-                          :rule="{
-                            required: true,
-                            message: `课程 ${index + 1} 全写`,
-                            trigger: ['input', 'blur'],
-                          }"
-                        >
-                          <n-input v-model:value="item[1].text" clearable />
-                          <n-button style="margin-left: 12px" @click="removeItem(index)">
-                            删除
-                          </n-button>
-                        </n-form-item>
-                    </n-flex>
-                </n-form-item>
+                    </NCard>
+                </n-space>
                 <n-form-item class="center">
                   <n-flex justify="center" size="large" class="center">
                     <n-button attr-type="button" @click="submit">
                       提交
-                    </n-button>
-                    <n-button attr-type="button" @click="addItem">
-                      增加
                     </n-button>
                   </n-flex>
                 </n-form-item>
