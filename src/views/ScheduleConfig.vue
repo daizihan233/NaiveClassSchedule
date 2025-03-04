@@ -201,6 +201,7 @@ useRequest(
       },
       onSuccess: (response) => {
           console.log(response.data);
+          optionsLst.value = []
           for (let datumElement of response.data['options']) {
               optionsLst.value.push(
                   {
