@@ -12,9 +12,9 @@ import {useRoute} from "vue-router";
 const route = useRoute();
 const week = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 let optionsLst = ref([])
-const school = computed(() => route.params.school).value;
-const grade = computed(() => route.params.grade).value;
-const cls = computed(() => route.params.cls).value;
+const school = computed(() => route.params.school);
+const grade = computed(() => route.params.grade);
+const cls = computed(() => route.params.cls);
 const formRef = ref(null);
 let pwd = ref('');
 let needs = {}
@@ -87,7 +87,7 @@ function submit() {
 const putSchedule = () => {
     return Promise.resolve(
         axios.put(
-            `${APISRV}/web/config/${school}/${grade}/${cls}/schedule`,
+            `${APISRV}/web/config/${school.value}/${grade.value}/${cls.value}/schedule`,
             formRef.value,
             {
                 auth: {
@@ -128,16 +128,17 @@ function okay() {
 }
 
 const getSchedule = () => {
-  return Promise.resolve(axios.get(`${APISRV}/web/config/${school}/${grade}/${cls}/schedule`));
+  return Promise.resolve(axios.get(`${APISRV}/web/config/${school.value}/${grade.value}/${cls.value}/schedule`));
 }
 
 const getOptions = () => {
-  return Promise.resolve(axios.get(`${APISRV}/web/config/${school}/${grade}/timetable/options`));
+  return Promise.resolve(axios.get(`${APISRV}/web/config/${school.value}/${grade.value}/timetable/options`));
 }
 
 useRequest(
     getSchedule,
     {
+      refreshDeps: [school, grade, cls],
       initialData: {
           "daily_class":[
             {
@@ -194,6 +195,7 @@ useRequest(
 useRequest(
     getOptions,
     {
+      refreshDeps: [school, grade, cls],
       initialData: {
           'options': []
       },
@@ -218,13 +220,13 @@ useRequest(
         <NCard title="所选信息">
             <NFlex justify="center">
                 <NCard class="stat">
-                  <NStatistic label="所选学校" :value="school"/>
+                  <NStatistic label="所选学校" v-bind:value="school"/>
                 </NCard>
                 <NCard class="stat">
-                  <NStatistic label="所选年级" :value="grade"/>
+                  <NStatistic label="所选年级" v-bind:value="grade"/>
                 </NCard>
                 <NCard class="stat">
-                  <NStatistic label="所选班级" :value="cls"/>
+                  <NStatistic label="所选班级" v-bind:value="cls"/>
                 </NCard>
             </NFlex>
         </NCard>
