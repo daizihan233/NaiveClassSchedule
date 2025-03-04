@@ -11,9 +11,9 @@ import {useRoute} from "vue-router";
 
 const route = useRoute();
 
-const school = computed(() => route.params.school).value;
-const grade = computed(() => route.params.grade).value;
-const cls = computed(() => route.params.cls).value;
+const school = computed(() => route.params.school);
+const grade = computed(() => route.params.grade);
+const cls = computed(() => route.params.cls);
 const formRef = ref(null);
 let pwd = ref('');
 
@@ -43,7 +43,7 @@ function submit() {
 const putSubjects = () => {
     return Promise.resolve(
         axios.put(
-            `${APISRV}/web/config/${school}/${grade}/subjects`,
+            `${APISRV}/web/config/${school.value}/${grade.value}/subjects`,
             formRef.value,
             {
                 auth: {
@@ -85,12 +85,13 @@ function okay() {
 }
 
 const getSubjects = () => {
-  return Promise.resolve(axios.get(`${APISRV}/web/config/${school}/${grade}/subjects`));
+  return Promise.resolve(axios.get(`${APISRV}/web/config/${school.value}/${grade.value}/subjects`));
 }
 
 useRequest(
     getSubjects,
     {
+      refreshDeps: [school, grade, cls],
       initialData: {
           "abbr": [],
           "fullName": []
@@ -109,13 +110,13 @@ useRequest(
         <NCard title="所选信息">
             <NFlex justify="center">
                 <NCard class="stat">
-                  <NStatistic label="所选学校" :value="school"/>
+                  <NStatistic label="所选学校" v-bind:value="school"/>
                 </NCard>
                 <NCard class="stat">
-                  <NStatistic label="所选年级" :value="grade"/>
+                  <NStatistic label="所选年级" v-bind:value="grade"/>
                 </NCard>
                 <NCard class="stat">
-                  <NStatistic label="所选班级" :value="cls"/>
+                  <NStatistic label="所选班级" v-bind:value="cls"/>
                 </NCard>
             </NFlex>
         </NCard>
