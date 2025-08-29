@@ -1,182 +1,293 @@
 <script setup>
 import {
-    NForm, NFormItem, NInput, NButton, NFlex, NCode, NCard, NStatistic, NModal, NSpace, useMessage
-} from "naive-ui";
-import {reactive, ref, computed} from "vue";
-import {zip} from "@/utils.js";
-import axios from "axios";
-import {APISRV} from "@/global.js";
-import {useRequest} from "vue-request";
-import {useRoute} from "vue-router";
+  NForm, NFormItem, NInput, NButton, NFlex, NCode, NCard, NStatistic, NModal, NSpace,
+  NInputNumber, NRadioGroup, NRadioButton, NDatePicker, useMessage
+} from 'naive-ui'
+import { reactive, ref, computed } from 'vue'
+import axios from 'axios'
+import { APISRV } from '@/global.js'
+import { useRequest } from 'vue-request'
+import { useRoute } from 'vue-router'
 
-const route = useRoute();
+const route = useRoute()
+const school = computed(() => route.params.school)
+const grade = computed(() => route.params.grade)
+const formRef = ref(null)
+const pwd = ref('')
 
-const school = computed(() => route.params.school);
-const grade = computed(() => route.params.grade);
-const formRef = ref(null);
-let pwd = ref('');
-
+// 编辑内部结构：
+// timetables: [ { name: '常日', segments: [ { start:'00:00', end:'07:09', valueType:'text', text:'早自习', index:null }, { start:'07:10', end:'07:49', valueType:'index', index:0 } ], dividerInput: '0,4,7' } ]
+// start: 时间戳 (NDatePicker 需要 number) —— 后端需要 YYYY-MM-DD 字符串
 const dynamicForm = reactive({
-  abbr: [{ text: "" }],
-  fullName: [{ text: "" }]
-});
+  timetables: [
+    {
+      name: '常日',
+      segments: [
+        // 默认空，真实数据加载后替换
+      ],
+      dividerInput: ''
+    }
+  ],
+  start: Date.now()
+})
 
-const removeItem = (index) => {
-  dynamicForm.abbr.splice(index, 1);
-  dynamicForm.fullName.splice(index, 1);
-};
+// ---------- 工具函数 ----------
+function pad(n) { return n.toString().padStart(2, '0') }
 
-const addItem = () => {
-  dynamicForm.abbr.push({ text: "" });
-  dynamicForm.fullName.push({ text: "" });
-};
-
-let showModal = ref(false);
-let disabledButton = ref(false);
-let buttonText = ref("确认提交");
-
-function submit() {
-    showModal.value = true;
+function dateToYMD(ts) {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-const putSubjects = () => {
-    return Promise.resolve(
-        axios.put(
-            `${APISRV}/web/config/${school.value}/${grade.value}/subjects`,
-            formRef.value,
-            {
-                auth: {
-                    username: 'ElectronClassSchedule',
-                    password: pwd.value
-                }
-            }
-        )
-    );
+function ymdToTs(str) {
+  const [y, m, d] = str.split('-').map(Number)
+  return new Date(y, m - 1, d).getTime()
 }
 
-const messages = useMessage();
+function buildPayload() {
+  const timetableObj = {}
+  const dividerObj = {}
+  for (const t of dynamicForm.timetables) {
+    if (!t.name) continue
+    const segMap = {}
+    for (const s of t.segments) {
+      if (!s.start || !s.end) continue
+      const range = `${s.start}-${s.end}`
+      let val = null
+      if (s.valueType === 'index') {
+        if (s.index === '' || s.index === null || isNaN(s.index)) continue
+        val = Number(s.index)
+      } else {
+        if (!s.text) continue
+        val = s.text
+      }
+      segMap[range] = val
+    }
+    timetableObj[t.name] = segMap
+    // divider 解析
+    const divArr = t.dividerInput.trim() === '' ? [] : t.dividerInput.split(',').map(x => Number(x.trim())).filter(x => !isNaN(x))
+    dividerObj[t.name] = divArr
+  }
+  return {
+    timetable: timetableObj,
+    divider: dividerObj,
+    start: dateToYMD(dynamicForm.start)
+  }
+}
+
+// ---------- 动态增删 ----------
+function addTimetable() {
+  // 基准：优先找名为“常日”，否则第一个
+  const base = dynamicForm.timetables.find(t => t.name === '常日') || dynamicForm.timetables[0]
+  const clonedSegments = base ? base.segments.map(s => ({
+    start: s.start,
+    end: s.end,
+    valueType: s.valueType,
+    text: s.text,
+    index: s.index
+  })) : []
+  const clonedDivider = base ? base.dividerInput : ''
+  dynamicForm.timetables.push({
+    name: `新作息${dynamicForm.timetables.length + 1}`,
+    segments: clonedSegments,
+    dividerInput: clonedDivider
+  })
+}
+function removeTimetable(idx) {
+  dynamicForm.timetables.splice(idx, 1)
+}
+
+function addSegment(timetable) {
+  timetable.segments.push({
+    start: '',
+    end: '',
+    valueType: 'text',
+    text: '',
+    index: null
+  })
+}
+function removeSegment(timetable, sIdx) {
+  timetable.segments.splice(sIdx, 1)
+}
+
+// ---------- 交互 ----------
+let showModal = ref(false)
+let disabledButton = ref(false)
+let buttonText = ref('确认提交')
+function submit() { showModal.value = true }
+
+const messages = useMessage()
+
+// ---------- 请求 ----------
+const putTimetable = () => {
+  const payload = buildPayload()
+  return Promise.resolve(
+    axios.put(
+      `${APISRV}/web/config/${school.value}/${grade.value}/timetable`,
+      payload,
+      {
+        auth: { username: 'ElectronClassSchedule', password: pwd.value }
+      }
+    )
+  )
+}
+
 function okay() {
-    disabledButton.value = true
-    buttonText.value = "你等会儿"
-    useRequest(
-        putSubjects,
-        {
-            onSuccess: (response) => {
-                console.log(response.data)
-                console.log(response.status)
-                messages.success("服务端说行")
-                showModal.value = false
-            },
-            onError: (error) => {
-                console.log(error.status)
-                if (error.status === 401) {
-                    messages.error("你寻思寻思这密码它对吗？")
-                } else if (error.status === 400) {
-                    messages.error("码姿不对，删了重写！（服务端校验不通过）")
-                } else {
-                    messages.error(`服务端看完天塌了（状态码：${error.status}）`)
-                }
-            }
-        }
-    );
-    buttonText.value = "确认提交"
-    disabledButton.value = false
+  disabledButton.value = true
+  buttonText.value = '你等会儿'
+  useRequest(
+    putTimetable,
+    {
+      onSuccess: (response) => {
+        console.log(response.data)
+        messages.success('服务端说行')
+        showModal.value = false
+      },
+      onError: (error) => {
+        console.log(error)
+        if (error.status === 401) messages.error('你寻思寻思这密码它对吗？')
+        else if (error.status === 400) messages.error('码姿不对，删了重写！（服务端校验不通过）')
+        else messages.error(`服务端看完天塌了（状态码：${error}）`)
+      }
+    }
+  )
+  buttonText.value = '确认提交'
+  disabledButton.value = false
 }
 
-const getSubjects = () => {
-  return Promise.resolve(axios.get(`${APISRV}/web/config/${school.value}/${grade.value}/subjects`));
+const getTimetable = () => {
+  return Promise.resolve(
+    axios.get(`${APISRV}/web/config/${school.value}/${grade.value}/timetable`)
+  )
 }
 
 useRequest(
-    getSubjects,
-    {
-      refreshDeps: [school, grade],
-      initialData: {
-          "abbr": [],
-          "fullName": []
-      },
-      onSuccess: (response) => {
-          console.log(response.data);
-          dynamicForm.abbr = response.data['abbr'];
-          dynamicForm.fullName = response.data['fullName'];
+  getTimetable,
+  {
+    refreshDeps: [school, grade],
+    initialData: {
+      timetable: {},
+      divider: {},
+      start: dateToYMD(Date.now())
+    },
+    onSuccess: (response) => {
+      console.log(response.data)
+      const data = response.data
+      // start
+      if (data.start) dynamicForm.start = ymdToTs(data.start)
+      // timetables
+      dynamicForm.timetables = []
+      for (const name of Object.keys(data.timetable || {})) {
+        const segs = data.timetable[name]
+        const segments = []
+        for (const range of Object.keys(segs)) {
+          const [s, e] = range.split('-')
+          const val = segs[range]
+          if (typeof val === 'number') {
+            segments.push({ start: s, end: e, valueType: 'index', index: val, text: '' })
+          } else {
+            segments.push({ start: s, end: e, valueType: 'text', text: val, index: null })
+          }
+        }
+        // 排序：按开始时间
+        segments.sort((a, b) => a.start.localeCompare(b.start))
+        const dividerInput = (data.divider && data.divider[name]) ? data.divider[name].join(',') : ''
+        dynamicForm.timetables.push({ name, segments, dividerInput })
+      }
+      if (dynamicForm.timetables.length === 0) {
+        dynamicForm.timetables.push({ name: '常日', segments: [], dividerInput: '' })
       }
     }
-);
+  }
+)
+
+// 预览
+const preview = computed(() => JSON.stringify(buildPayload(), null, 2))
 </script>
 
 <template>
-    <NFlex vertical>
-        <NCard title="所选信息">
-            <NFlex justify="center">
-                <NCard class="stat">
-                  <NStatistic label="所选学校" v-bind:value="school"/>
+  <NFlex vertical>
+    <NCard title="所选信息">
+      <NFlex justify="center">
+        <NCard class="stat">
+          <NStatistic label="所选学校" :value="school.toString()" />
+        </NCard>
+        <NCard class="stat">
+          <NStatistic label="所选年级" :value="grade.toString()" />
+        </NCard>
+      </NFlex>
+    </NCard>
+
+    <NCard title="配置表单">
+      <n-form ref="formRef" :model="dynamicForm" class="center">
+        <n-form-item label="开学日期 (start)">
+          <NDatePicker v-model:value="dynamicForm.start" type="date" />
+        </n-form-item>
+        <NCard size="small" v-for="(tb, tIdx) in dynamicForm.timetables" :key="tIdx" :title="tb.name" style="margin-bottom:12px;">
+          <NSpace vertical>
+            <n-form-item :label="`作息名称`" :path="`timetables[${tIdx}].name`">
+              <NInput v-model:value="tb.name" placeholder="例如：常日" />
+              <NButton style="margin-left:12px" tertiary type="error" @click="removeTimetable(tIdx)" v-if="dynamicForm.timetables.length>1">删此作息</NButton>
+            </n-form-item>
+            <n-form-item :label="`Divider (逗号分隔课程序号)`" :path="`timetables[${tIdx}].dividerInput`">
+              <NInput v-model:value="tb.dividerInput" placeholder="例如：0,4,7" />
+            </n-form-item>
+            <NCard size="small" title="时间段 (按开始时间顺序)" segmented>
+              <NSpace vertical>
+                <NCard size="small" v-for="(seg, sIdx) in tb.segments" :key="sIdx" :title="`#${sIdx+1}`">
+                  <NSpace vertical>
+                    <n-form-item :label="'开始时间 HH:MM'" :path="`timetables[${tIdx}].segments[${sIdx}].start`">
+                      <NInput v-model:value="seg.start" placeholder="07:10" />
+                    </n-form-item>
+                    <n-form-item :label="'结束时间 HH:MM'" :path="`timetables[${tIdx}].segments[${sIdx}].end`">
+                      <NInput v-model:value="seg.end" placeholder="07:49" />
+                    </n-form-item>
+                    <n-form-item :label="'值类型'">
+                      <NRadioGroup v-model:value="seg.valueType">
+                        <NRadioButton value="text">文本</NRadioButton>
+                        <NRadioButton value="index">课程序号</NRadioButton>
+                      </NRadioGroup>
+                    </n-form-item>
+                    <n-form-item v-if="seg.valueType==='text'" :label="'文本值'" :path="`timetables[${tIdx}].segments[${sIdx}].text`">
+                      <NInput v-model:value="seg.text" placeholder="早自习 / 课间 / 放学" />
+                    </n-form-item>
+                    <n-form-item v-else :label="'课程序号 (数字)'" :path="`timetables[${tIdx}].segments[${sIdx}].index`">
+                      <NInputNumber v-model:value="seg.index" :min="0" />
+                    </n-form-item>
+                    <NButton type="error" tertiary @click="removeSegment(tb, sIdx)">删此段</NButton>
+                  </NSpace>
                 </NCard>
-                <NCard class="stat">
-                  <NStatistic label="所选年级" v-bind:value="grade"/>
-                </NCard>
-            </NFlex>
+                <NButton dashed type="primary" @click="addSegment(tb)">+ 增加时间段</NButton>
+              </NSpace>
+            </NCard>
+          </NSpace>
         </NCard>
-        <NCard title="配置表单">
-            <n-form ref="formRef" :model="dynamicForm" class="center" :show-label="false">
-                <n-form-item class="center" v-for="(item, index) in zip(dynamicForm.abbr, dynamicForm.fullName)">
-                    <n-flex justify="center" size="large" class="center">
-                        <n-form-item
-                          :key="index"
-                          :label="`课程 ${index + 1} 缩写`"
-                          :path="`abbr[${index}].text`"
-                          :rule="{
-                            required: true,
-                            message: `课程 ${index + 1} 缩写`,
-                            trigger: ['input', 'blur'],
-                          }"
-                        >
-                          <n-input v-model:value="item[0].text" clearable />
-                        </n-form-item>
-                        <n-form-item
-                          :key="index"
-                          :label="`课程 ${index + 1} 全写`"
-                          :path="`fullName[${index}].text`"
-                          :rule="{
-                            required: true,
-                            message: `课程 ${index + 1} 全写`,
-                            trigger: ['input', 'blur'],
-                          }"
-                        >
-                          <n-input v-model:value="item[1].text" clearable />
-                          <n-button style="margin-left: 12px" @click="removeItem(index)">
-                            删除
-                          </n-button>
-                        </n-form-item>
-                    </n-flex>
-                </n-form-item>
-                <n-form-item class="center">
-                  <n-flex justify="center" size="large" class="center">
-                    <n-button attr-type="button" @click="submit">
-                      提交
-                    </n-button>
-                    <n-button attr-type="button" @click="addItem">
-                      增加
-                    </n-button>
-                  </n-flex>
-                </n-form-item>
-            </n-form>
-        </NCard>
-        <NCard title="提交前预览">
-            <n-code :code="JSON.stringify(formRef, null, 2)" language="json" show-line-numbers />
-        </NCard>
-        <n-modal v-model:show="showModal" preset="dialog" title="Dialog">
-            <template #header>
-              <div>你是入吗？</div>
-            </template>
-            <n-space vertical>
-                <div>此操作需要密码</div>
-                <n-input type="password" v-model:value="pwd" clearable />
-            </n-space>
-            <template #action>
-                <n-button attr-type="button" @click="okay" :disabled="disabledButton">
-                    {{ buttonText }}
-                </n-button>
-            </template>
-        </n-modal>
-    </NFlex>
+        <n-form-item>
+          <NButton type="primary" dashed @click="addTimetable">+ 增加作息模板</NButton>
+        </n-form-item>
+        <n-form-item class="center">
+          <n-flex justify="center" size="large" class="center">
+            <n-button attr-type="button" @click="submit">提交</n-button>
+          </n-flex>
+        </n-form-item>
+      </n-form>
+    </NCard>
+
+    <NCard title="提交前预览">
+      <n-code :code="preview" language="json" show-line-numbers />
+    </NCard>
+
+    <n-modal v-model:show="showModal" preset="dialog" title="Dialog">
+      <template #header>
+        <div>你是入吗？</div>
+      </template>
+      <n-space vertical>
+        <div>此操作需要密码</div>
+        <n-input type="password" v-model:value="pwd" clearable />
+      </n-space>
+      <template #action>
+        <n-button attr-type="button" @click="okay" :disabled="disabledButton">{{ buttonText }}</n-button>
+      </template>
+    </n-modal>
+  </NFlex>
 </template>

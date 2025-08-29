@@ -68,13 +68,13 @@ function okay() {
                 showModal.value = false
             },
             onError: (error) => {
-                console.log(error.status)
+                console.log(error)
                 if (error.status === 401) {
                     messages.error("你寻思寻思这密码它对吗？")
                 } else if (error.status === 400) {
                     messages.error("码姿不对，删了重写！（服务端校验不通过）")
                 } else {
-                    messages.error(`服务端看完天塌了（状态码：${error.status}）`)
+                    messages.error(`服务端看完天塌了（状态码：${error}）`)
                 }
             }
         }
@@ -84,7 +84,7 @@ function okay() {
 }
 
 const getSubjects = () => {
-  return Promise.resolve(axios.get(`${APISRV}/web/config/${school}/${grade}/subjects`));
+  return Promise.resolve(axios.get(`${APISRV}/web/config/${school.value}/${grade.value}/subjects`));
 }
 
 useRequest(
@@ -109,10 +109,10 @@ useRequest(
         <NCard title="所选信息">
             <NFlex justify="center">
                 <NCard class="stat">
-                  <NStatistic label="所选学校" v-bind:value="school"/>
+                  <NStatistic label="所选学校" v-bind:value="school.toString()"/>
                 </NCard>
                 <NCard class="stat">
-                  <NStatistic label="所选年级" v-bind:value="grade"/>
+                  <NStatistic label="所选年级" v-bind:value="grade.toString()"/>
                 </NCard>
             </NFlex>
         </NCard>
