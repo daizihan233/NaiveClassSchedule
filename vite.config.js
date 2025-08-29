@@ -15,5 +15,8 @@ export default defineConfig({
   },
   build: {
     sourcemap: true // 启用 Source Map
+  },
+  server: {
+      allowedHosts: ['manager.khbit.cn']
   }
 })

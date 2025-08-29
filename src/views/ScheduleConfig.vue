@@ -12,6 +12,10 @@ import {useRoute} from "vue-router";
 const route = useRoute();
 const week = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 let optionsLst = ref([])
+let subjectsOptionsLst = ref([])
+let optionsDataLoaded = ref(false);
+let subjectsOptionsDataLoaded = ref(false);
+let scheduleDataLoaded = ref(false);
 const school = computed(() => route.params.school);
 const grade = computed(() => route.params.grade);
 const cls = computed(() => route.params.cls);
@@ -67,13 +71,15 @@ const dynamicForm = reactive({
 });
 
 const removeItem = (index) => {
-  dynamicForm.abbr.splice(index, 1);
-  dynamicForm.fullName.splice(index, 1);
+  return (iten) => {
+      dynamicForm.daily_class[index]['classList'][iten].splice(-1, 1);
+  }
 };
 
-const addItem = () => {
-  dynamicForm.abbr.push({ text: "" });
-  dynamicForm.fullName.push({ text: "" });
+const addItem = (index, iten) => {
+  return () => {
+      dynamicForm.daily_class[index]['classList'][iten].push('课');
+  }
 };
 
 let showModal = ref(false);
@@ -135,6 +141,10 @@ const getOptions = () => {
   return Promise.resolve(axios.get(`${APISRV}/web/config/${school.value}/${grade.value}/timetable/options`));
 }
 
+const getSubjectsOptions = () => {
+  return Promise.resolve(axios.get(`${APISRV}/web/config/${school.value}/${grade.value}/subjects/options`));
+}
+
 useRequest(
     getSchedule,
     {
@@ -188,6 +198,7 @@ useRequest(
       onSuccess: (response) => {
           console.log(response.data);
           dynamicForm.daily_class = response.data['daily_class'];
+          scheduleDataLoaded.value = true
       }
     }
 );
@@ -211,6 +222,30 @@ useRequest(
               )
               needs[datumElement['label']] = datumElement['need']
           }
+          optionsDataLoaded.value = true;
+      }
+    }
+);
+
+useRequest(
+    getSubjectsOptions,
+    {
+      refreshDeps: [school, grade, cls],
+      initialData: {
+          'options': []
+      },
+      onSuccess: (response) => {
+          console.log(response.data);
+          subjectsOptionsLst.value = []
+          for (let datumElement of response.data['options']) {
+              subjectsOptionsLst.value.push(
+                  {
+                      label: datumElement['label'],
+                      value: datumElement['value']
+                  }
+              )
+          }
+          subjectsOptionsDataLoaded.value = true;
       }
     }
 );
@@ -232,23 +267,45 @@ useRequest(
             </NFlex>
         </NCard>
         <NCard title="配置表单">
-            <n-form ref="formRef" :model="dynamicForm" class="center">
+            <n-form ref="formRef" :model="dynamicForm" class="center" v-if="scheduleDataLoaded && optionsDataLoaded && subjectsOptionsDataLoaded">
                 <n-space vertical>
                     <NCard v-for="(item, index) in week" :title="item">
-                        <n-form-item
-                            :key="index"
-                            :label="`${item} 所用作息表`"
-                            :path="`daily_class[${index}]['timetable']`"
-                            :rule="{
-                              required: true,
-                            }"
-                        >
-                            <n-select
-                              placeholder="选一个吧"
-                              :options="optionsLst"
-                              v-model:value="dynamicForm.daily_class[index]['timetable']"
-                            />
-                        </n-form-item>
+                        <n-space vertical>
+                            <NCard title="课程安排">
+                                <n-form-item
+                                    v-for="(iten) in Array(needs[dynamicForm.daily_class[index]['timetable']] + 1).keys()"
+                                    :key="iten"
+                                    :label="`第 ${iten + 1} 节课`"
+                                    :path="`daily_class[${index}]['classList'][${iten}]`"
+                                    :rule="{
+                                      required: true,
+                                    }"
+                                >
+                                    <n-space justify="space-around" size="large">
+                                        <n-select
+                                          placeholder="选一个吧"
+                                          :options="subjectsOptionsLst"
+                                          v-for="(itex, indez) in dynamicForm.daily_class[index]['classList'][iten]"
+                                          v-model:value="dynamicForm.daily_class[index]['classList'][iten][indez]"
+                                        />
+                                    </n-space>
+                                 </n-form-item>
+                            </NCard>
+                            <n-form-item
+                                :key="index"
+                                :label="`${item} 所用作息表`"
+                                :path="`daily_class[${index}]['timetable']`"
+                                :rule="{
+                                  required: true,
+                                }"
+                            >
+                                <n-select
+                                  placeholder="选一个吧"
+                                  :options="optionsLst"
+                                  v-model:value="dynamicForm.daily_class[index]['timetable']"
+                                />
+                            </n-form-item>
+                        </n-space>
                     </NCard>
                 </n-space>
                 <n-form-item class="center">
