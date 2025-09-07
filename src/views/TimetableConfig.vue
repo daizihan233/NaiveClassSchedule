@@ -1,13 +1,28 @@
 <script setup>
 import {
-  NForm, NFormItem, NInput, NButton, NFlex, NCode, NCard, NStatistic, NModal, NSpace,
-  NInputNumber, NRadioGroup, NRadioButton, NDatePicker, useMessage, NCollapse, NCollapseItem
+  NButton,
+  NCard,
+  NCode,
+  NCollapse,
+  NCollapseItem,
+  NDatePicker,
+  NFlex,
+  NForm,
+  NFormItem,
+  NInput,
+  NInputNumber,
+  NModal,
+  NRadioButton,
+  NRadioGroup,
+  NSpace,
+  NStatistic,
+  useMessage
 } from 'naive-ui'
-import { reactive, ref, computed } from 'vue'
+import {computed, reactive, ref} from 'vue'
 import axios from 'axios'
-import { APISRV } from '@/global.js'
-import { useRequest } from 'vue-request'
-import { useRoute } from 'vue-router'
+import {APISRV} from '@/global.js'
+import {useRequest} from 'vue-request'
+import {useRoute} from 'vue-router'
 
 const route = useRoute()
 const school = computed(() => route.params.school)
@@ -33,6 +48,19 @@ const dynamicForm = reactive({
 
 // ---------- 工具函数 ----------
 function pad(n) { return n.toString().padStart(2, '0') }
+function parseTime(str){
+  if(!str) return null
+  const m = str.match(/^([01]\d|2[0-3]):([0-5]\d)$/)
+  if(!m) return null
+  return parseInt(m[1])*60 + parseInt(m[2])
+}
+function toHHMM(mins){
+  if(mins<0) mins=0
+  if(mins>1439) mins=1439
+  const h = Math.floor(mins/60)
+  const m = mins%60
+  return pad(h)+":"+pad(m)
+}
 
 function dateToYMD(ts) {
   const d = new Date(ts)
@@ -65,8 +93,7 @@ function buildPayload() {
     }
     timetableObj[t.name] = segMap
     // divider 解析
-    const divArr = t.dividerInput.trim() === '' ? [] : t.dividerInput.split(',').map(x => Number(x.trim())).filter(x => !isNaN(x))
-    dividerObj[t.name] = divArr
+    dividerObj[t.name] = t.dividerInput.trim() === '' ? [] : t.dividerInput.split(',').map(x => Number(x.trim())).filter(x => !isNaN(x))
   }
   return {
     timetable: timetableObj,
@@ -93,6 +120,7 @@ function addTimetable() {
     dividerInput: clonedDivider
   })
   expandedTimetables.value.push(dynamicForm.timetables.length -1)
+  normalizeTimetable(dynamicForm.timetables[dynamicForm.timetables.length -1], true)
 }
 function removeTimetable(idx) {
   dynamicForm.timetables.splice(idx, 1)
@@ -109,16 +137,33 @@ function addSegment(timetable) {
     text: '',
     index: null
   })
+  normalizeTimetable(timetable, true)
 }
 function removeSegment(timetable, sIdx) {
   timetable.segments.splice(sIdx, 1)
+  normalizeTimetable(timetable, true)
+}
+
+function createEmptySegment(){
+  return { start:'', end:'', valueType:'text', text:'', index:null }
+}
+function insertSegmentAbove(timetable, idx){
+  timetable.segments.splice(idx,0, createEmptySegment())
+  normalizeTimetable(timetable, true)
+}
+function insertSegmentBelow(timetable, idx){
+  timetable.segments.splice(idx+1,0, createEmptySegment())
+  normalizeTimetable(timetable, true)
 }
 
 // ---------- 交互 ----------
 let showModal = ref(false)
 let disabledButton = ref(false)
 let buttonText = ref('确认提交')
-function submit() { showModal.value = true }
+function submit() {
+  if(!validateAll()) return; // 有错误直接返回
+  showModal.value = true
+}
 
 const messages = useMessage()
 
@@ -210,6 +255,72 @@ const preview = computed(() => JSON.stringify(buildPayload(), null, 2))
 const expandedTimetables = ref([0])
 function expandAllTimetables(){ expandedTimetables.value = dynamicForm.timetables.map((_,i)=>i) }
 function collapseAllTimetables(){ expandedTimetables.value = [] }
+
+// ---------- 自动填充与校验 ----------
+function normalizeTimetable(timetable, silent=false){
+  const segs = timetable.segments
+  // 只处理有合法 start 的段
+  const valid = []
+  for(const s of segs){
+    const sm = parseTime(s.start)
+    if(sm!==null){ valid.push({ seg:s, startM:sm }) }
+  }
+  valid.sort((a,b)=>a.startM-b.startM)
+  if(valid.length===0) return { valid:true }
+  if(valid[0].startM !== 0){
+    valid[0].startM = 0
+    valid[0].seg.start = '00:00'
+    if(!silent) messages.info(`作息 ${timetable.name} 已将首段开始时间自动纠正为 00:00`)
+  }
+  let ok = true
+  let errMsg = ''
+  for(let i=0;i<valid.length;i++){
+    const cur = valid[i]
+    const next = valid[i+1]
+    if(next){
+      if(next.startM <= cur.startM){
+        ok = false
+        errMsg = `作息 ${timetable.name} 存在开始时间不递增 ( ${toHHMM(next.startM)} <= ${toHHMM(cur.startM)} )`
+        break
+      }
+      cur.seg.end = toHHMM(next.startM - 1)
+    } else {
+      cur.seg.end = '23:59'
+    }
+  }
+  if(!ok && !silent) messages.error(errMsg)
+  // ---- 课程序号规范化 ----
+  if(ok){
+    const lessonSegs = valid.filter(v=>v.seg.valueType==='index')
+    let changed = false
+    for(let i=0;i<lessonSegs.length;i++){
+      if(lessonSegs[i].seg.index !== i){
+        lessonSegs[i].seg.index = i
+        changed = true
+      }
+    }
+    if(changed && !silent){
+      messages.info(`作息 ${timetable.name} 课程序号已自动调整为 0~${lessonSegs.length-1}`)
+    }
+  }
+  return { valid: ok, message: errMsg }
+}
+function onStartChange(timetable, seg, val){
+  seg.start = val
+  normalizeTimetable(timetable, true)
+}
+function onValueTypeChange(timetable){
+  normalizeTimetable(timetable, true)
+}
+// 覆盖 submit：在显示弹窗前做全局校验
+function validateAll(){
+  let allOk = true
+  for(const t of dynamicForm.timetables){
+    const r = normalizeTimetable(t, false)
+    if(!r.valid) allOk = false
+  }
+  return allOk
+}
 </script>
 
 <template>
@@ -254,14 +365,15 @@ function collapseAllTimetables(){ expandedTimetables.value = [] }
                   <NSpace vertical>
                     <NCard size="small" v-for="(seg, sIdx) in tb.segments" :key="sIdx" :title="`#${sIdx+1}`">
                       <NSpace vertical>
-                        <n-form-item :label="'开始时间 HH:MM'" :path="`timetables[${tIdx}].segments[${sIdx}].start`">
-                          <NInput v-model:value="seg.start" placeholder="07:10" />
-                        </n-form-item>
-                        <n-form-item :label="'结束时间 HH:MM'" :path="`timetables[${tIdx}].segments[${sIdx}].end`">
-                          <NInput v-model:value="seg.end" placeholder="07:49" />
+                        <n-form-item :label="'时间段'" :path="`timetables[${tIdx}].segments[${sIdx}].start`">
+                          <NSpace align="center">
+                            <NInput style="width:90px" v-model:value="seg.start" placeholder="07:10" @update:value="val=>onStartChange(tb, seg, val)" />
+                            <span style="user-select:none;">~</span>
+                            <NInput style="width:90px" v-model:value="seg.end" disabled placeholder="自动" />
+                          </NSpace>
                         </n-form-item>
                         <n-form-item :label="'值类型'">
-                          <NRadioGroup v-model:value="seg.valueType">
+                          <NRadioGroup v-model:value="seg.valueType" @update:value="()=>onValueTypeChange(tb)">
                             <NRadioButton value="text">文本</NRadioButton>
                             <NRadioButton value="index">课程序号</NRadioButton>
                           </NRadioGroup>
@@ -269,10 +381,14 @@ function collapseAllTimetables(){ expandedTimetables.value = [] }
                         <n-form-item v-if="seg.valueType==='text'" :label="'文本值'" :path="`timetables[${tIdx}].segments[${sIdx}].text`">
                           <NInput v-model:value="seg.text" placeholder="早自习 / 课间 / 放学" />
                         </n-form-item>
-                        <n-form-item v-else :label="'课程序号 (数字)'" :path="`timetables[${tIdx}].segments[${sIdx}].index`">
-                          <NInputNumber v-model:value="seg.index" :min="0" />
+                        <n-form-item v-else :label="'课程序号 (自动)'" :path="`timetables[${tIdx}].segments[${sIdx}].index`">
+                          <NInputNumber :value="seg.index" disabled placeholder="自动编号" />
                         </n-form-item>
-                        <NButton type="error" tertiary @click="removeSegment(tb, sIdx)">删此段</NButton>
+                        <NSpace>
+                          <NButton size="tiny" tertiary @click="insertSegmentAbove(tb, sIdx)">上方插入</NButton>
+                          <NButton size="tiny" tertiary @click="insertSegmentBelow(tb, sIdx)">下方插入</NButton>
+                          <NButton size="tiny" type="error" tertiary @click="removeSegment(tb, sIdx)">删此段</NButton>
+                        </NSpace>
                       </NSpace>
                     </NCard>
                     <NButton dashed type="primary" @click="addSegment(tb)">+ 增加时间段</NButton>
