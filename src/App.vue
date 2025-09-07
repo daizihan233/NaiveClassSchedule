@@ -1,4 +1,5 @@
 <template>
+  <!-- 🤔 -->
   <n-config-provider :theme="theme" date-locale="dateZhCN" locale="zhCN" class="full" :hljs="hljs">
     <n-message-provider class="full">
       <n-dialog-provider class="full">
