@@ -37,7 +37,7 @@
 import {computed, h, ref} from "vue";
 import {
   NMenu, NSpace, NLayout, NLayoutSider, NConfigProvider,
-  darkTheme, NDialogProvider, NMessageProvider, useOsTheme
+  darkTheme, NDialogProvider, NMessageProvider, useOsTheme, useMessage
 } from "naive-ui";
 import { RouterLink } from "vue-router";
 import {useRequest} from "vue-request";
@@ -49,6 +49,7 @@ import json from 'highlight.js/lib/languages/json'
 hljs.registerLanguage('json', json)
 
 const osThemeRef = useOsTheme();
+const message = useMessage();
 let theme = computed(() => osThemeRef.value === "dark" ? darkTheme : null);
 // noinspection JSUnusedGlobalSymbols
 let menuOptions = ref(
@@ -67,58 +68,65 @@ let menuOptions = ref(
         }
     ]
 );
-const getMenu = () => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      resolve(axios.get(`${APISRV}/web/menu`));
-    }, 1000);
-  });
-}
+
+// 直接请求，无需 setTimeout 包装，避免 Promise 嵌套潜在问题
+const getMenu = () => axios.get(`${APISRV}/web/menu`);
+
 function resolveMenuItem(menuItem) {
-    console.log(menuItem)
-    if (menuItem === null) return null;
-    if (menuItem instanceof Array)
-        return menuItem.map(
-            (item) => {
-                return resolveMenuItem(item)
-            }
-        )
+    if (!menuItem) return null;
+    // 递归处理数组
+    if (Array.isArray(menuItem)) return menuItem.map(resolveMenuItem).filter(Boolean);
+    const childrenSrc = menuItem.children;
+    const resolvedChildren = Array.isArray(childrenSrc) && childrenSrc.length > 0 ? resolveMenuItem(childrenSrc) : undefined;
     return {
         label: () => h(
             RouterLink,
-            {
-                to: menuItem['to']
-            },
-            {default: () => menuItem['text']}
+            { to: menuItem['to'] },
+            { default: () => menuItem['text'] }
         ),
         key: menuItem['key'],
-        children: resolveMenuItem(menuItem['children'])
-    }
+        children: resolvedChildren
+    };
 }
+
 useRequest(
     getMenu,
     {
       initialData: {
-          "data": [
+          data: [
               {
-                  "to": "/",
-                  "text": "总览",
-                  "key": "go-back-home",
-                  "children": null
+                  to: '/',
+                  text: '总览',
+                  key: 'go-back-home',
+                  children: []
               }
-        ]
+          ]
       },
       onSuccess: (response) => {
-          console.log(response.data);
-          let menu = []
-          for (let datumElement of response.data['data']) {
-              menu.push(
-                  resolveMenuItem(datumElement)
-              )
+          try {
+            // axios 返回结构 { data: <payload> }
+            const payload = response?.data;
+            const rawList = payload?.data;
+            if (!Array.isArray(rawList)) {
+              console.warn('[menu] 响应 data.data 不是数组，保持原菜单');
+              message.warning('菜单数据格式异常，已使用默认菜单');
+              return;
+            }
+            const menu = rawList.map(d => resolveMenuItem(d)).filter(Boolean);
+            if (menu.length === 0) {
+              console.warn('[menu] 解析后为空，保留原菜单');
+              message.warning('菜单为空，已使用默认菜单');
+              return;
+            }
+            menuOptions.value = menu;
+          } catch (e) {
+            console.error('[menu] 解析失败', e);
+            message.error('菜单解析失败');
           }
-          menuOptions.value = menu;
-          console.log(menu);
-          console.log(menuOptions.value)
+      },
+      onError: (e) => {
+        console.error('[menu] 获取失败', e);
+        message.error('菜单加载失败');
       }
     }
 );
