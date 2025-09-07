@@ -1,7 +1,7 @@
 <script setup>
 import {
     NForm, NFormItem, NInput, NButton, NFlex, NCode, NCard, NStatistic, NModal, NSpace,
-    NSelect, useMessage
+    NSelect, useMessage, NCollapse, NCollapseItem
 } from "naive-ui";
 import {reactive, ref, computed} from "vue";
 import axios from "axios";
@@ -237,6 +237,10 @@ useRequest(
       }
     }
 );
+
+const expandedDays = ref([0]);
+function expandAllDays(){ expandedDays.value = week.map((_,i)=>i); }
+function collapseAllDays(){ expandedDays.value = []; }
 </script>
 
 <template>
@@ -257,50 +261,50 @@ useRequest(
         <NCard title="配置表单">
             <n-form ref="formRef" :model="dynamicForm" class="center" v-if="scheduleDataLoaded && optionsDataLoaded && subjectsOptionsDataLoaded">
                 <n-space vertical>
-                    <NCard v-for="(item, index) in week" :title="item">
-                        <n-space vertical>
-                            <NCard title="课程安排">
-                                <n-form-item
-                                    v-for="(iten) in Array(needs[dynamicForm.daily_class[index]['timetable']] + 1).keys()"
-                                    :key="iten"
-                                    :label="`第 ${iten + 1} 节课`"
-                                    :path="`daily_class[${index}]['classList'][${iten}]`"
-                                    :rule="{
-                                      required: true,
-                                    }"
-                                >
-                                    <n-space justify="space-around" size="large">
-                                        <n-select
-                                          placeholder="选一个吧"
-                                          :options="subjectsOptionsLst"
-                                          v-for="(itex, indez) in dynamicForm.daily_class[index]['classList'][iten]"
-                                          v-model:value="dynamicForm.daily_class[index]['classList'][iten][indez]"
-                                        />
-                                    </n-space>
-                                 </n-form-item>
-                            </NCard>
-                            <n-form-item
-                                :key="index"
-                                :label="`${item} 所用作息表`"
-                                :path="`daily_class[${index}]['timetable']`"
-                                :rule="{
-                                  required: true,
-                                }"
-                            >
-                                <n-select
-                                  placeholder="选一个吧"
-                                  :options="optionsLst"
-                                  v-model:value="dynamicForm.daily_class[index]['timetable']"
-                                />
-                            </n-form-item>
-                        </n-space>
-                    </NCard>
+                  <n-space>
+                    <n-button size="small" @click="expandAllDays">全部展开</n-button>
+                    <n-button size="small" @click="collapseAllDays">全部折叠</n-button>
+                  </n-space>
+                  <n-collapse multiple v-model:expanded-names="expandedDays">
+                    <n-collapse-item v-for="(item, index) in week" :name="index" :key="index" :title="item">
+                      <n-space vertical>
+                        <NCard title="课程安排" size="small">
+                          <n-form-item
+                              v-for="(iten) in Array(needs[dynamicForm.daily_class[index]['timetable']] + 1).keys()"
+                              :key="iten"
+                              :label="`第 ${iten + 1} 节课`"
+                              :path="`daily_class[${index}]['classList'][${iten}]`"
+                              :rule="{ required: true }"
+                          >
+                              <n-space justify="space-around" size="large">
+                                  <n-select
+                                    placeholder="选一个吧"
+                                    :options="subjectsOptionsLst"
+                                    v-for="(itex, indez) in dynamicForm.daily_class[index]['classList'][iten]"
+                                    v-model:value="dynamicForm.daily_class[index]['classList'][iten][indez]"
+                                  />
+                              </n-space>
+                           </n-form-item>
+                        </NCard>
+                        <n-form-item
+                            :key="index"
+                            :label="`${item} 所用作息表`"
+                            :path="`daily_class[${index}]['timetable']`"
+                            :rule="{ required: true }"
+                        >
+                            <n-select
+                              placeholder="选一个吧"
+                              :options="optionsLst"
+                              v-model:value="dynamicForm.daily_class[index]['timetable']"
+                            />
+                        </n-form-item>
+                      </n-space>
+                    </n-collapse-item>
+                  </n-collapse>
                 </n-space>
                 <n-form-item class="center">
                   <n-flex justify="center" size="large" class="center">
-                    <n-button attr-type="button" @click="submit">
-                      提交
-                    </n-button>
+                    <n-button attr-type="button" @click="submit">提交</n-button>
                   </n-flex>
                 </n-form-item>
             </n-form>

@@ -1,7 +1,7 @@
 <script setup>
 import {
   NForm, NFormItem, NInput, NButton, NFlex, NCode, NCard, NStatistic, NModal, NSpace,
-  NInputNumber, NRadioGroup, NRadioButton, NDatePicker, useMessage
+  NInputNumber, NRadioGroup, NRadioButton, NDatePicker, useMessage, NCollapse, NCollapseItem
 } from 'naive-ui'
 import { reactive, ref, computed } from 'vue'
 import axios from 'axios'
@@ -92,9 +92,13 @@ function addTimetable() {
     segments: clonedSegments,
     dividerInput: clonedDivider
   })
+  expandedTimetables.value.push(dynamicForm.timetables.length -1)
 }
 function removeTimetable(idx) {
   dynamicForm.timetables.splice(idx, 1)
+  expandedTimetables.value = expandedTimetables.value
+    .filter(i => i !== idx)
+    .map(i => i > idx ? i-1 : i)
 }
 
 function addSegment(timetable) {
@@ -203,6 +207,9 @@ useRequest(
 
 // 预览
 const preview = computed(() => JSON.stringify(buildPayload(), null, 2))
+const expandedTimetables = ref([0])
+function expandAllTimetables(){ expandedTimetables.value = dynamicForm.timetables.map((_,i)=>i) }
+function collapseAllTimetables(){ expandedTimetables.value = [] }
 </script>
 
 <template>
@@ -223,45 +230,58 @@ const preview = computed(() => JSON.stringify(buildPayload(), null, 2))
         <n-form-item label="开学日期 (start)">
           <NDatePicker v-model:value="dynamicForm.start" type="date" />
         </n-form-item>
-        <NCard size="small" v-for="(tb, tIdx) in dynamicForm.timetables" :key="tIdx" :title="tb.name" style="margin-bottom:12px;">
-          <NSpace vertical>
-            <n-form-item :label="`作息名称`" :path="`timetables[${tIdx}].name`">
-              <NInput v-model:value="tb.name" placeholder="例如：常日" />
-              <NButton style="margin-left:12px" tertiary type="error" @click="removeTimetable(tIdx)" v-if="dynamicForm.timetables.length>1">删此作息</NButton>
-            </n-form-item>
-            <n-form-item :label="`Divider (逗号分隔课程序号)`" :path="`timetables[${tIdx}].dividerInput`">
-              <NInput v-model:value="tb.dividerInput" placeholder="例如：0,4,7" />
-            </n-form-item>
-            <NCard size="small" title="时间段 (按开始时间顺序)" segmented>
+        <n-space style="margin-bottom:8px;">
+          <n-button size="small" @click="expandAllTimetables">全部展开</n-button>
+          <n-button size="small" @click="collapseAllTimetables">全部折叠</n-button>
+        </n-space>
+        <n-collapse multiple v-model:expanded-names="expandedTimetables">
+          <n-collapse-item
+            v-for="(tb, tIdx) in dynamicForm.timetables"
+            :key="tIdx"
+            :name="tIdx"
+            :title="tb.name + '  (' + tb.segments.length + ' 段)'"
+          >
+            <NCard size="small" :title="tb.name" style="margin-bottom:12px;">
               <NSpace vertical>
-                <NCard size="small" v-for="(seg, sIdx) in tb.segments" :key="sIdx" :title="`#${sIdx+1}`">
+                <n-form-item :label="`作息名称`" :path="`timetables[${tIdx}].name`">
+                  <NInput v-model:value="tb.name" placeholder="例如：常日" />
+                  <NButton style="margin-left:12px" tertiary type="error" @click="removeTimetable(tIdx)" v-if="dynamicForm.timetables.length>1">删此作息</NButton>
+                </n-form-item>
+                <n-form-item :label="`Divider (逗号分隔课程序号)`" :path="`timetables[${tIdx}].dividerInput`">
+                  <NInput v-model:value="tb.dividerInput" placeholder="例如：0,4,7" />
+                </n-form-item>
+                <NCard size="small" title="时间段 (按开始时间顺序)" segmented>
                   <NSpace vertical>
-                    <n-form-item :label="'开始时间 HH:MM'" :path="`timetables[${tIdx}].segments[${sIdx}].start`">
-                      <NInput v-model:value="seg.start" placeholder="07:10" />
-                    </n-form-item>
-                    <n-form-item :label="'结束时间 HH:MM'" :path="`timetables[${tIdx}].segments[${sIdx}].end`">
-                      <NInput v-model:value="seg.end" placeholder="07:49" />
-                    </n-form-item>
-                    <n-form-item :label="'值类型'">
-                      <NRadioGroup v-model:value="seg.valueType">
-                        <NRadioButton value="text">文本</NRadioButton>
-                        <NRadioButton value="index">课程序号</NRadioButton>
-                      </NRadioGroup>
-                    </n-form-item>
-                    <n-form-item v-if="seg.valueType==='text'" :label="'文本值'" :path="`timetables[${tIdx}].segments[${sIdx}].text`">
-                      <NInput v-model:value="seg.text" placeholder="早自习 / 课间 / 放学" />
-                    </n-form-item>
-                    <n-form-item v-else :label="'课程序号 (数字)'" :path="`timetables[${tIdx}].segments[${sIdx}].index`">
-                      <NInputNumber v-model:value="seg.index" :min="0" />
-                    </n-form-item>
-                    <NButton type="error" tertiary @click="removeSegment(tb, sIdx)">删此段</NButton>
+                    <NCard size="small" v-for="(seg, sIdx) in tb.segments" :key="sIdx" :title="`#${sIdx+1}`">
+                      <NSpace vertical>
+                        <n-form-item :label="'开始时间 HH:MM'" :path="`timetables[${tIdx}].segments[${sIdx}].start`">
+                          <NInput v-model:value="seg.start" placeholder="07:10" />
+                        </n-form-item>
+                        <n-form-item :label="'结束时间 HH:MM'" :path="`timetables[${tIdx}].segments[${sIdx}].end`">
+                          <NInput v-model:value="seg.end" placeholder="07:49" />
+                        </n-form-item>
+                        <n-form-item :label="'值类型'">
+                          <NRadioGroup v-model:value="seg.valueType">
+                            <NRadioButton value="text">文本</NRadioButton>
+                            <NRadioButton value="index">课程序号</NRadioButton>
+                          </NRadioGroup>
+                        </n-form-item>
+                        <n-form-item v-if="seg.valueType==='text'" :label="'文本值'" :path="`timetables[${tIdx}].segments[${sIdx}].text`">
+                          <NInput v-model:value="seg.text" placeholder="早自习 / 课间 / 放学" />
+                        </n-form-item>
+                        <n-form-item v-else :label="'课程序号 (数字)'" :path="`timetables[${tIdx}].segments[${sIdx}].index`">
+                          <NInputNumber v-model:value="seg.index" :min="0" />
+                        </n-form-item>
+                        <NButton type="error" tertiary @click="removeSegment(tb, sIdx)">删此段</NButton>
+                      </NSpace>
+                    </NCard>
+                    <NButton dashed type="primary" @click="addSegment(tb)">+ 增加时间段</NButton>
                   </NSpace>
                 </NCard>
-                <NButton dashed type="primary" @click="addSegment(tb)">+ 增加时间段</NButton>
               </NSpace>
             </NCard>
-          </NSpace>
-        </NCard>
+          </n-collapse-item>
+        </n-collapse>
         <n-form-item>
           <NButton type="primary" dashed @click="addTimetable">+ 增加作息模板</NButton>
         </n-form-item>
