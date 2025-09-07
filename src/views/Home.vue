@@ -42,13 +42,7 @@ const columns = [
       sorter: (row1, row2) => row1.disconnect - row2.disconnect
   }
 ]
-const getStatistic = () => {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      resolve(axios.get(`${APISRV}/web/statistic`));
-    }, 1000);
-  });
-}
+const getStatistic = () => axios.get(`${APISRV}/web/statistic`);
 const statInfo = reactive(
     {
         "weather_error":0,
