@@ -10,6 +10,31 @@ const router = createRouter(
                 component: () => import("../views/Home.vue")
             },
             {
+                path: '/autorun',
+                name: 'Autorun',
+                component: () => import("../views/Autorun.vue")
+            },
+            {
+                path: '/autorun/add',
+                name: 'AutorunAdd',
+                component: () => import("../views/AddAutorunConfig.vue")
+            },
+            {
+                path: '/autorun/edit/:id',
+                name: 'AutorunEdit',
+                component: () => import("../views/AddAutorunConfig.vue")
+            },
+            {
+                path: '/autorun/add-schedule',
+                name: 'AutorunAddSchedule',
+                component: () => import("../views/AddAutorunSchedule.vue")
+            },
+            {
+                path: '/autorun/edit-schedule/:id',
+                name: 'AutorunEditSchedule',
+                component: () => import("../views/AddAutorunSchedule.vue")
+            },
+            {
                 path: '/config/:school/:grade/subjects',
                 name: 'Subjects',
                 component: () => import("../views/SubjectsConfig.vue")
