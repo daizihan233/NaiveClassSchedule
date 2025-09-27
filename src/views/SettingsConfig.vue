@@ -1,7 +1,7 @@
 <script setup>
 import {
   NForm, NFormItem, NInput, NButton, NFlex, NCode, NCard, NStatistic, NModal, NSpace,
-  NSwitch, NDatePicker, NDynamicInput, NInputGroup, useMessage
+  NSwitch, NDatePicker, useMessage, NText
 } from 'naive-ui'
 import { reactive, ref, computed } from 'vue'
 import axios from 'axios'
@@ -24,6 +24,10 @@ const dynamicForm = reactive({
   countdownDate: Date.now(),
   week_display: true,
   banner_text: '',
+  // 新增：存在天气预警时，用预警信息替代横幅文本
+  weather_alert_override: false,
+  // 新增：是否使用简略的天气预警信息
+  weather_alert_brief: false,
   css_style: [
     // { key: '--center-font-size', value: '30px' }
   ]
@@ -44,6 +48,9 @@ function buildPayload(){
     countdown_target,
     week_display: dynamicForm.week_display,
     banner_text: dynamicForm.banner_text,
+    // 新增字段随 payload 一并提交
+    weather_alert_override: dynamicForm.weather_alert_override,
+    weather_alert_brief: dynamicForm.weather_alert_brief,
     css_style: css
   }
 }
@@ -75,7 +82,7 @@ function okay(){
   disabledButton.value = true
   buttonText.value = '你等会儿'
   useRequest(putSettings,{
-    onSuccess:(resp)=>{ messages.success('服务端说行'); showModal.value=false },
+    onSuccess:()=>{ messages.success('服务端说行'); showModal.value=false },
     onError:(error)=>{
       if(error.status===401) messages.error('你寻思寻思这密码它对吗？')
       else if(error.status===400) messages.error('码姿不对，删了重写！（服务端校验不通过）')
@@ -98,6 +105,9 @@ useRequest(getSettings,{
     countdown_target:'hidden',
     week_display:true,
     banner_text:'',
+    // 新增字段默认值，便于后端缺省兼容
+    weather_alert_override:false,
+    weather_alert_brief:false,
     css_style:{}
   },
   onSuccess:(resp)=>{
@@ -107,10 +117,14 @@ useRequest(getSettings,{
       dynamicForm.countdownMode='hidden'
     } else {
       dynamicForm.countdownMode='date'
-      try { dynamicForm.countdownDate = parseYMD(data.countdown_target) } catch(_){}
+      const ts = parseYMD(data.countdown_target)
+      if(!Number.isNaN(ts)) dynamicForm.countdownDate = ts
     }
     dynamicForm.week_display = data.week_display
     dynamicForm.banner_text = data.banner_text
+    // 新增字段回填（后端未返回时默认 false）
+    dynamicForm.weather_alert_override = !!data.weather_alert_override
+    dynamicForm.weather_alert_brief = !!data.weather_alert_brief
     dynamicForm.css_style = []
     for(const k of Object.keys(data.css_style||{})){
       dynamicForm.css_style.push({ key:k, value:data.css_style[k] })
@@ -159,6 +173,22 @@ const preview = computed(()=> JSON.stringify(buildPayload(), null, 2))
             <n-form-item label="banner_text">
               <NInput v-model:value="dynamicForm.banner_text" placeholder="空则不显示" clearable />
             </n-form-item>
+          </NCard>
+          <!-- 新增：天气预警覆盖横幅设置 -->
+          <NCard size="small" title="天气预警">
+            <n-form-item label="存在预警时替代横幅文本">
+              <NSwitch v-model:value="dynamicForm.weather_alert_override" />
+            </n-form-item>
+            <n-form-item label="是否使用简略的预警信息">
+              <NSwitch v-model:value="dynamicForm.weather_alert_brief" />
+            </n-form-item>
+            <NText depth="3" style="font-size: 12px;">
+              开启后：当系统检测到天气预警，将用预警信息替换上面的横幅文本内容。
+            </NText>
+            <br />
+            <NText depth="3" style="font-size: 12px;">
+              简略信息示例：用“江苏省气象台发布大雾黄色预警”等短语替代冗长描述。
+            </NText>
           </NCard>
           <NCard size="small" title="CSS 变量样式 (key / value)">
             <NSpace vertical>
