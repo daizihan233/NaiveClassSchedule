@@ -38,19 +38,15 @@
 import {computed, h, ref} from "vue";
 import {
   NMenu, NSpace, NLayout, NLayoutSider, NConfigProvider,
-  darkTheme, NDialogProvider, NMessageProvider, useOsTheme, useMessage
+  darkTheme, NDialogProvider, NMessageProvider, useOsTheme
 } from "naive-ui";
 import { RouterLink } from "vue-router";
 import {useRequest} from "vue-request";
 import axios from "axios";
 import {APISRV} from "@/global.js";
 import hljs from 'highlight.js/lib/core'
-import json from 'highlight.js/lib/languages/json'
-
-hljs.registerLanguage('json', json)
 
 const osThemeRef = useOsTheme();
-const message = useMessage();
 let theme = computed(() => osThemeRef.value === "dark" ? darkTheme : null);
 // noinspection JSUnusedGlobalSymbols
 let menuOptions = ref(
@@ -79,6 +75,14 @@ function resolveMenuItem(menuItem) {
     if (Array.isArray(menuItem)) return menuItem.map(resolveMenuItem).filter(Boolean);
     const childrenSrc = menuItem.children;
     const resolvedChildren = Array.isArray(childrenSrc) && childrenSrc.length > 0 ? resolveMenuItem(childrenSrc) : undefined;
+    if (typeof menuItem['to'] !== 'string') {
+        console.warn('[menu] 菜单项缺少 to 字段，忽略', menuItem);
+        return {
+          key: menuItem['key'],
+          children: resolvedChildren,
+          label: menuItem['text']
+        };
+    }
     return {
         label: () => h(
             RouterLink,
@@ -110,24 +114,20 @@ useRequest(
             const rawList = payload?.data;
             if (!Array.isArray(rawList)) {
               console.warn('[menu] 响应 data.data 不是数组，保持原菜单');
-              message.warning('菜单数据格式异常，已使用默认菜单');
               return;
             }
             const menu = rawList.map(d => resolveMenuItem(d)).filter(Boolean);
             if (menu.length === 0) {
               console.warn('[menu] 解析后为空，保留原菜单');
-              message.warning('菜单为空，已使用默认菜单');
               return;
             }
             menuOptions.value = menu;
           } catch (e) {
             console.error('[menu] 解析失败', e);
-            message.error('菜单解析失败');
           }
       },
       onError: (e) => {
         console.error('[menu] 获取失败', e);
-        message.error('菜单加载失败');
       }
     }
 );
