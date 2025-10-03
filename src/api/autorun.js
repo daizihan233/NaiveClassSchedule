@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { APISRV } from '@/global.js'
+import {APISRV} from '@/global.js'
 
 // 伪数据 API：自动任务（支持分类内容与多选生效域）
 // 合同：所有函数返回 Promise，并在 120-200ms 之间模拟延迟
@@ -21,21 +21,6 @@ export const autorunTypeOptions = [
   { label: '全部调整', value: AutorunType.ALL }
 ]
 
-export const statusOptions = [
-  { label: '待生效', value: '待生效' },
-  { label: '生效中', value: '生效中' },
-  { label: '已过期', value: '已过期' }
-]
-
-export const scopeOptions = [
-  { label: '全校', value: '全校' },
-  { label: '年级：高一', value: '高一' },
-  { label: '年级：高二', value: '高二' },
-  { label: '年级：高三', value: '高三' },
-  { label: '班级：高一(1)班', value: '高一(1)班' },
-  { label: '班级：高一(2)班', value: '高一(2)班' }
-]
-
 export const timetableOptions = [
   { label: '默认作息表', value: 'default' },
   { label: '考试周作息表', value: 'exam' },
@@ -54,13 +39,13 @@ export function getTimetableLabel(id) {
 
 // 作用域编码与树（基于 /web/menu 示例结构的伪数据）
 export function encodeScope(level, school, grade, cls) {
-  if (level === 'school') return `school|${school}`
-  if (level === 'grade') return `grade|${school}|${grade}`
-  if (level === 'class') return `class|${school}|${grade}|${cls}`
+  if (level === 'school') return `school/${school}`
+  if (level === 'grade') return `grade/${school}/${grade}`
+  if (level === 'class') return `class/${school}/${grade}/${cls}`
   return String(level)
 }
 export function parseScope(value) {
-  const parts = String(value || '').split('|')
+  const parts = String(value || '').split('/')
   const level = parts[0]
   const school = parts[1]
   const grade = parts[2]

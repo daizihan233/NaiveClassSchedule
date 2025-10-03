@@ -1,0 +1,15 @@
+# EditorConfig is awesome: https://editorconfig.org
+
+# 适用于整个项目
+root = true
+
+[*] # 所有文件
+charset = utf-8 # 使用 UTF-8 编码
+end_of_line = crlf # 使用 Windows 风格的换行符
+trim_trailing_whitespace = true # 删除行尾多余的空白符
+insert_final_newline = true # 文件末尾插入新行
+indent_style = space # 使用空格缩进
+
+[{*.{js,css,html},package.json}] # 对于 JS / CSS / HTML 文件以及 package.json
+indent_size = 2 # 缩进大小为 2 个空格
+

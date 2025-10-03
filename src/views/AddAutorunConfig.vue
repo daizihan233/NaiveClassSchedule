@@ -1,14 +1,33 @@
 <script setup>
-import { reactive, ref, computed, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useRequest } from 'vue-request'
+import {computed, reactive, ref, watch} from 'vue'
+import {useRoute, useRouter} from 'vue-router'
+import {useRequest} from 'vue-request'
 import {
-    NForm, NFormItem, NCard, NInput, NInputNumber, NSelect, NButton, NSpace, useMessage, NDatePicker, NDivider, NAlert,
-    NModal
+  NAlert,
+  NButton,
+  NCard,
+  NDatePicker,
+  NDivider,
+  NForm,
+  NFormItem,
+  NInput,
+  NInputNumber,
+  NModal,
+  NSelect,
+  NSpace,
+  useMessage
 } from 'naive-ui'
 import {
-  AutorunType, autorunTypeOptions, timetableOptions, getTask, fetchScopeTree, parseScope, fetchCompByHoliday,
-  fetchCompByWorkday, fetchCompYearPairs, saveAutorun
+  AutorunType,
+  autorunTypeOptions,
+  fetchCompByHoliday,
+  fetchCompByWorkday,
+  fetchCompYearPairs,
+  fetchScopeTree,
+  getTask,
+  parseScope,
+  saveAutorun,
+  timetableOptions
 } from '@/api/autorun.js'
 
 // 扁平化工具
@@ -38,13 +57,13 @@ function applyDisabledToScopeOptions(options, selected){
   for (const v of sel){
     const p = parseScope(v)
     if (p.level === 'school') schoolSet.add(p.school)
-    else if (p.level === 'grade') gradeSet.add(`${p.school}|${p.grade}`)
+    else if (p.level === 'grade') gradeSet.add(`${p.school}/${p.grade}`)
   }
   return arr.map(opt => {
     const p = parseScope(opt.value)
     let disabled = false
     if (p.level === 'grade') disabled = schoolSet.has(p.school)
-    else if (p.level === 'class') disabled = schoolSet.has(p.school) || gradeSet.has(`${p.school}|${p.grade}`)
+    else if (p.level === 'class') disabled = schoolSet.has(p.school) || gradeSet.has(`${p.school}/${p.grade}`)
     return { ...opt, disabled }
   })
 }
@@ -115,7 +134,7 @@ async function confirmSave(){
     await saveAutorun(payload, pwd.value)
     message.success('已保存')
     showPwd.value = false
-    router.push('/autorun')
+    await router.push('/autorun')
   } catch(e){
     const status = e?.status || e?.response?.status
     if (status === 401) message.error('你寻思寻思这密码它对吗？')
@@ -130,20 +149,26 @@ function onCancel() { router.back() }
 function normalizeScopes(list){
   const arr = Array.isArray(list) ? Array.from(new Set(list)) : []
   const schoolSet = new Set()
-  const gradeSet = new Set() // key: `${school}|${grade}`
+  const gradeSet = new Set() // key: `${school}/${grade}`
   // 收集已选父层级
   for (const v of arr){
     const p = parseScope(v)
     if (p.level === 'school') schoolSet.add(p.school)
-    else if (p.level === 'grade') gradeSet.add(`${p.school}|${p.grade}`)
+    else if (p.level === 'grade') gradeSet.add(`${p.school}/${p.grade}`)
   }
   // 过滤子层级
   const out = []
   for (const v of arr){
     const p = parseScope(v)
-    if (p.level === 'school') { out.push(v); continue }
-    if (p.level === 'grade') { if (!schoolSet.has(p.school)) out.push(v); continue }
-    if (p.level === 'class') { if (!schoolSet.has(p.school) && !gradeSet.has(`${p.school}|${p.grade}`)) out.push(v); continue }
+    if (p.level === 'school') {
+      out.push(v);
+    }
+    if (p.level === 'grade') {
+      if (!schoolSet.has(p.school)) out.push(v);
+    }
+    if (p.level === 'class') {
+      if (!schoolSet.has(p.school) && !gradeSet.has(`${p.school}/${p.grade}`)) out.push(v);
+    }
   }
   return out
 }

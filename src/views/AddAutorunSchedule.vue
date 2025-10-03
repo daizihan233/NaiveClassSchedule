@@ -1,9 +1,34 @@
 <script setup>
-import { reactive, ref, computed, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useRequest } from 'vue-request'
-import { NForm, NFormItem, NCard, NInput, NInputNumber, NSelect, NButton, NSpace, useMessage, NDatePicker, NDivider, NAlert, NText } from 'naive-ui'
-import { AutorunType, autorunTypeOptions, fetchScopeTree, getTask, updateTask, parseScope, fetchClassScheduleTemplateByWeekday, fetchScheduleByDate, fetchTimetableOptions, fetchSubjectsOptions, saveAutorun } from '@/api/autorun.js'
+import {computed, reactive, ref, watch} from 'vue'
+import {useRoute, useRouter} from 'vue-router'
+import {useRequest} from 'vue-request'
+import {
+  NAlert,
+  NButton,
+  NCard,
+  NDatePicker,
+  NDivider,
+  NForm,
+  NFormItem,
+  NInput,
+  NInputNumber,
+  NSelect,
+  NSpace,
+  NText,
+  useMessage
+} from 'naive-ui'
+import {
+  AutorunType,
+  autorunTypeOptions,
+  fetchClassScheduleTemplateByWeekday,
+  fetchScheduleByDate,
+  fetchScopeTree,
+  fetchSubjectsOptions,
+  fetchTimetableOptions,
+  getTask,
+  parseScope,
+  saveAutorun
+} from '@/api/autorun.js'
 
 // 扁平化菜单树为下拉可多选项
 function flattenScope(nodes, prefix = '') {
@@ -31,13 +56,13 @@ function applyDisabledToScopeOptions(options, selected){
   for (const v of sel){
     const p = parseScope(v)
     if (p.level === 'school') schoolSet.add(p.school)
-    else if (p.level === 'grade') gradeSet.add(`${p.school}|${p.grade}`)
+    else if (p.level === 'grade') gradeSet.add(`${p.school}/${p.grade}`)
   }
   return arr.map(opt => {
     const p = parseScope(opt.value)
     let disabled = false
     if (p.level === 'grade') disabled = schoolSet.has(p.school)
-    else if (p.level === 'class') disabled = schoolSet.has(p.school) || gradeSet.has(`${p.school}|${p.grade}`)
+    else if (p.level === 'class') disabled = schoolSet.has(p.school) || gradeSet.has(`${p.school}/${p.grade}`)
     return { ...opt, disabled }
   })
 }
@@ -78,7 +103,10 @@ function pickSchoolGrade(selected){
   const arr = Array.isArray(selected) ? selected : []
   // 优先班级
   const clsVal = arr.find(v => parseScope(v).level==='class')
-  if (clsVal){ const p=parseScope(clsVal); return { school:p.school, grade:p.grade } }
+  if (clsVal) {
+    const p = parseScope(clsVal);
+    return {school: p.school, grade: p.grade, cls: p.class}
+  }
   // 其次年级
   const gradeVal = arr.find(v => parseScope(v).level==='grade')
   if (gradeVal){ const p=parseScope(gradeVal); return { school:p.school, grade:p.grade } }
@@ -142,6 +170,44 @@ watch(periodCount, (n)=>{
   form.content.schedule.periods = arr
 })
 
+// 作用域选择归并与选项加载
+function normalizeScopes(list) {
+  const arr = Array.isArray(list) ? Array.from(new Set(list)) : []
+  const schoolSet = new Set()
+  const gradeSet = new Set() // key: `${school}/${grade}`
+  for (const v of arr) {
+    const p = parseScope(v)
+    if (p.level === 'school') schoolSet.add(p.school)
+    else if (p.level === 'grade') gradeSet.add(`${p.school}/${p.grade}`)
+  }
+  const out = []
+  for (const v of arr) {
+    const p = parseScope(v)
+    if (p.level === 'school') {
+      out.push(v);
+    }
+    if (p.level === 'grade') {
+      if (!schoolSet.has(p.school)) out.push(v);
+    }
+    if (p.level === 'class') {
+      if (!schoolSet.has(p.school) && !gradeSet.has(`${p.school}/${p.grade}`)) out.push(v);
+    }
+  }
+  return out
+}
+
+function onScopeChange(v) {
+  form.scope = normalizeScopes(v)
+  loadGradeOptions()
+}
+
+watch(() => form.scope.slice(), () => {
+  loadGradeOptions()
+})
+watch(() => [form.type, form.content.timetableId], () => {
+  if (form.type === AutorunType.ALL) loadGradeOptions()
+})
+
 // 校验
 function validateSchedule(){
   if (!Array.isArray(form.scope) || form.scope.length === 0) { message.warning('请选择生效域'); return false }
@@ -155,6 +221,50 @@ function validateSchedule(){
     if (!item || !item.subject || String(item.subject).trim()==='') { message.warning('请为每一节选择科目'); return false }
   }
   return true
+}
+
+// 自动填充
+const autoFilling = ref(false)
+
+async function autoFillSchedule() {
+  const date = form.content.date
+  const firstScope = Array.isArray(form.scope) && form.scope.length > 0 ? form.scope[0] : null
+  if (!date || !firstScope) {
+    message.warning('请先选择生效域与日期');
+    return
+  }
+  autoFilling.value = true
+  try {
+    const {data} = await fetchScheduleByDate(date, firstScope)
+    const periods = Array.isArray(data?.periods) ? data.periods : []
+    if (periods.length > 0) {
+      form.content.schedule.periods = periods.map((p, idx) => ({
+        no: Number(p.no) || idx + 1,
+        subject: String(p.subject || '')
+      }))
+      return
+    }
+    // 兜底：若选到班级，尝试按周几模板
+    const picked = pickSchoolGrade(form.scope)
+    if (picked && picked.cls) {
+      const weekday = new Date(date).getDay() // 0..6
+      const {data: tpl} = await fetchClassScheduleTemplateByWeekday({
+        school: picked.school,
+        grade: picked.grade,
+        cls: picked.cls,
+        weekday
+      })
+      const ps = Array.isArray(tpl?.periods) ? tpl.periods : []
+      if (ps.length > 0) {
+        form.content.schedule.periods = ps.map((p, idx) => ({
+          no: Number(p.no) || idx + 1,
+          subject: String(p.subject || '')
+        }))
+      }
+    }
+  } finally {
+    autoFilling.value = false
+  }
 }
 
 // 保存（带密码 PUT /web/autorun/）
