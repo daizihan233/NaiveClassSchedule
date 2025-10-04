@@ -196,6 +196,24 @@ export async function saveAutorun(payload, password){
     })
     return resp?.data
   }
+  if (payload && payload.type === AutorunType.SCHEDULE) {
+    const resp = await axios.put(`${APISRV}/web/autorun/schedule`, payload, {
+      auth: {
+        username: 'ElectronClassSchedule',
+        password
+      }
+    })
+    return resp?.data
+  }
+  if (payload && payload.type === AutorunType.ALL) {
+    const resp = await axios.put(`${APISRV}/web/autorun/all`, payload, {
+      auth: {
+        username: 'ElectronClassSchedule',
+        password
+      }
+    })
+    return resp?.data
+  }
   return { skipped: true }
 }
 
@@ -218,19 +236,6 @@ export function summarizeContent(task) {
   if (tt === 'SCHEDULE') return `为 ${c.date || '?'} 设置课程表（班级/范围见生效域）`
   if (tt === 'ALL') return `为 ${c.date || '?'} 设置课程表`
   return ''
-}
-
-export async function fetchScheduleByDate(date, scope) {
-  try {
-    const resp = await axios.get(`${APISRV}/web/schedule/by-date`, { params: { date, scope } })
-    const data = resp?.data?.data || {}
-    const periods = Array.isArray(data.periods) ? data.periods : []
-    return { data: { periods } }
-  } catch (e) {
-    console.warn('[autorun] fetchScheduleByDate fallback', e)
-    const fallback = Array.from({ length: 8 }).map((_, i) => ({ no: i + 1, subject: `第${i + 1}节` }))
-    return { data: { periods: fallback } }
-  }
 }
 
 export async function fetchClassScheduleTemplateByWeekday({ school, grade, cls, weekday }) {

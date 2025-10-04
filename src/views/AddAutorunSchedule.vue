@@ -12,6 +12,7 @@ import {
   NFormItem,
   NInput,
   NInputNumber,
+  NModal,
   NSelect,
   NSpace,
   NText,
@@ -21,7 +22,6 @@ import {
   AutorunType,
   autorunTypeOptions,
   fetchClassScheduleTemplateByWeekday,
-  fetchScheduleByDate,
   fetchScopeTree,
   fetchSubjectsOptions,
   fetchTimetableOptions,
@@ -146,7 +146,9 @@ watch(periodCount, (n)=>{
   if (n<=0) { form.content.schedule.periods = []; return }
   const arr = form.content.schedule.periods.slice(0, n)
   while (arr.length < n) arr.push({ no: arr.length+1, subject: '' })
-  arr.forEach((p, idx)=>{ p.no = idx+1 })
+  for (let idx = 0; idx < arr.length; idx++) {
+    arr[idx].no = idx + 1
+  }
   form.content.schedule.periods = arr
 })
 
@@ -179,42 +181,108 @@ function validateSchedule(){
   return true
 }
 
+// 根据选择的作用域收集对应的所有班级
+function collectClassesFromScopes(scopes) {
+  const result = []
+  const seen = new Set()
+  const arr = Array.isArray(scopes) ? scopes : []
+  for (const v of arr) {
+    if (!v) continue
+    const parts = String(v).split('/').filter(Boolean)
+    if (parts.length >= 3) {
+      // 直接是班级
+      const [school, grade, cls] = parts
+      const value = `${school}/${grade}/${cls}`
+      if (!seen.has(value)) {
+        result.push({school, grade, cls, value});
+        seen.add(value)
+      }
+    } else if (parts.length === 2) {
+      // 年级 -> 展开为所有班级
+      const gradeNode = findNodeByValue(scopeTreeRef.value, v)
+      const classes = Array.isArray(gradeNode?.children) ? gradeNode.children : []
+      for (const c of classes) {
+        const pv = String(c.value || '')
+        const [school, grade, cls] = pv.split('/').filter(Boolean)
+        if (!school || !grade || !cls) continue
+        if (!seen.has(pv)) {
+          result.push({school, grade, cls, value: pv});
+          seen.add(pv)
+        }
+      }
+    } else if (parts.length === 1) {
+      // 学校 -> 展开为所有年级的所有班级
+      const schoolNode = findNodeByValue(scopeTreeRef.value, v)
+      const grades = Array.isArray(schoolNode?.children) ? schoolNode.children : []
+      for (const g of grades) {
+        const classes = Array.isArray(g?.children) ? g.children : []
+        for (const c of classes) {
+          const pv = String(c.value || '')
+          const [school, grade, cls] = pv.split('/').filter(Boolean)
+          if (!school || !grade || !cls) continue
+          if (!seen.has(pv)) {
+            result.push({school, grade, cls, value: pv});
+            seen.add(pv)
+          }
+        }
+      }
+    }
+  }
+  return result
+}
+
 const autoFilling = ref(false)
 async function autoFillSchedule() {
   const date = form.content.date
-  const firstScope = Array.isArray(form.scope) && form.scope.length > 0 ? form.scope[0] : null
-  if (!date || !firstScope) {
-    message.warning('请先选择生效域与日期');
+  if (!date) {
+    message.warning('请选择日期');
+    return
+  }
+  const classList = collectClassesFromScopes(form.scope)
+  if (!Array.isArray(classList) || classList.length === 0) {
+    message.warning('请选择包含班级的生效域');
     return
   }
   autoFilling.value = true
   try {
-    const {data} = await fetchScheduleByDate(date, firstScope)
-    const periods = Array.isArray(data?.periods) ? data.periods : []
-    if (periods.length > 0) {
-      form.content.schedule.periods = periods.map((p, idx) => ({
-        no: Number(p.no) || idx + 1,
-        subject: String(p.subject || '')
-      }))
-      return
-    }
-    const picked = pickSchoolGrade(form.scope)
-    if (picked && picked.cls) {
-      const weekday = new Date(date).getDay()
-      const {data: tpl} = await fetchClassScheduleTemplateByWeekday({
-        school: picked.school,
-        grade: picked.grade,
-        cls: picked.cls,
-        weekday
-      })
-      const ps = Array.isArray(tpl?.periods) ? tpl.periods : []
-      if (ps.length > 0) {
-        form.content.schedule.periods = ps.map((p, idx) => ({
-          no: Number(p.no) || idx + 1,
-          subject: String(p.subject || '')
-        }))
+    const weekday = new Date(date).getDay()
+    // 并行请求全部班级的该日模板
+    const results = await Promise.allSettled(classList.map(c => fetchClassScheduleTemplateByWeekday({
+      school: c.school,
+      grade: c.grade,
+      cls: c.cls,
+      weekday
+    })))
+    const ok = []
+    for (let idx = 0; idx < results.length; idx++) {
+      const r = results[idx]
+      if (r.status === 'fulfilled') {
+        const periods = Array.isArray(r.value?.data?.periods) ? r.value.data.periods : []
+        ok.push({cls: classList[idx], periods})
       }
     }
+    if (ok.length === 0) {
+      message.error('未能获取到任何班级的课程模板');
+      return
+    }
+    const counts = new Set(ok.map(x => x.periods.length))
+    if (counts.size > 1) {
+      // 组装冲突详情
+      const detail = ok
+          .map(x => `${x.cls.value}：${x.periods.length} 节`)
+          .join('\n')
+      conflictMsg.value = `所选作用域内不同班级在该日的节次数不一致，无法自动填充：\n${detail}`
+      showConflict.value = true
+      return
+    }
+    // 随机取一个成功的班级用于填充
+    const pickIdx = Math.floor(Math.random() * ok.length)
+    const chosen = ok[pickIdx]
+    form.content.schedule.periods = chosen.periods.map((p, idx) => ({
+      no: Number(p.no) || idx + 1,
+      subject: String(p.subject || '')
+    }))
+    message.success(`已按班级 ${chosen.cls.value} 自动填充`)
   } finally {
     autoFilling.value = false
   }
@@ -223,6 +291,10 @@ async function autoFillSchedule() {
 // 保存（带密码 PUT /web/autorun/）
 const saving = ref(false)
 const showPwd = ref(false)
+
+// 冲突弹窗
+const showConflict = ref(false)
+const conflictMsg = ref('')
 
 function onCancel() {
   router.back()
@@ -313,11 +385,17 @@ async function confirmSave(pwd) {
   <confirm-password-modal
       :loading="saving"
       :show="showPwd"
-      confirm-text="确认保存"
       title="保存"
       @confirm="confirmSave"
       @update:show="val=> showPwd = val"
   />
+
+  <n-modal v-model:show="showConflict" preset="dialog" title="节次数冲突">
+    <n-space vertical>
+      <div style="white-space: pre-line;">{{ conflictMsg }}</div>
+      <div style="font-size:12px;color:#888">请调整生效域使其落到节次数一致的班级集合，或单选一个具体班级。</div>
+    </n-space>
+  </n-modal>
 </template>
 
 <style scoped>
