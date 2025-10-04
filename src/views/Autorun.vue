@@ -124,7 +124,7 @@ function goAddSchedule() { router.push('/autorun/add-schedule') }
 </script>
 
 <template>
-  <n-card title="自动任务状态预览" :bordered="false">
+  <n-card :bordered="false" title="自动任务状态概览">
     <template #header-extra>
       <n-space>
         <n-button size="small" @click="goAddBasic">新增（调休/作息表）</n-button>
@@ -146,6 +146,3 @@ function goAddSchedule() { router.push('/autorun/add-schedule') }
     </n-modal>
   </n-card>
 </template>
-
-<style scoped>
-</style>

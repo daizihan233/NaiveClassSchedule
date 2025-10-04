@@ -243,11 +243,11 @@ export async function saveAutorun(payload, password){
 export function summarizeContent(task) {
   if (!task) return ''
   const t = task.type
-  const c = task.content || {}
-  if (t === AutorunType.COMPENSATION) return `${c.date || '?'} 上 ${c.useDate || '?'} 的课`
-  if (t === AutorunType.TIMETABLE) return `${c.date || '?'} 使用作息表：${getTimetableLabel(c.timetableId || '?')}`
-  if (t === AutorunType.SCHEDULE) return `为 ${c.date || '?'} 设置课程表（班级/范围见生效域）`
-  if (t === AutorunType.ALL) return `全局为 ${c.date || '?'} 设置课程表`
+  const c = JSON.parse(task.content) || {}
+  if (t === 'COMPENSATION') return `${c.date || '?'} 上 ${c.useDate || '?'} 的课`
+  if (t === 'TIMETABLE') return `${c.date || '?'} 使用作息表：${getTimetableLabel(c.timetableId || '?')}`
+  if (t === 'SCHEDULE') return `为 ${c.date || '?'} 设置课程表（班级/范围见生效域）`
+  if (t === 'ALL') return `为 ${c.date || '?'} 设置课程表`
   return ''
 }
 
