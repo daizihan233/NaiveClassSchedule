@@ -106,13 +106,24 @@ async function doDelete(){
 }
 
 const columns = [
-  { title: '唯一ID', key: 'id', width: 140, ellipsis: { tooltip: true } },
-  { title: '类型', key: 'type', width: 120, render: (row) => h(NTag, { size: 'small', bordered: false }, { default: () => getAutorunTypeLabel(row.type) }) },
-  { title: '生效域', key: 'scope', width: 260, render: (row) => renderScope(getScopeLabels(row.scope)) },
+  {title: '唯一ID', key: 'id', ellipsis: {tooltip: true}},
+  {
+    title: '类型',
+    key: 'type',
+    render: (row) => h(NTag, {size: 'small', bordered: false}, {default: () => getAutorunTypeLabel(row.type)})
+  },
+  {title: '生效域', key: 'scope', render: (row) => renderScope(getScopeLabels(row.scope))},
   { title: '内容', key: 'content', ellipsis: { tooltip: true }, render: (row) => summarizeContent(row) },
-  { title: '优先级', key: 'priority', width: 100, align: 'center', render: (row) => renderPriorityTag(row.priority) },
-  { title: '状态', key: 'status', width: 110, align: 'center', render: (row) => { const type = statusTypeMap[row.status] || 'default'; return h(NTag, { type, size: 'small', bordered: false }, { default: () => row.status }) } },
-  { title: '快捷操作', key: 'actions', width: 220, align: 'center', render: (row) => h(NSpace, { justify: 'center' }, { default: () => [
+  {title: '优先级', key: 'priority', align: 'center', render: (row) => renderPriorityTag(row.priority)},
+  {
+    title: '状态', key: 'status', align: 'center', render: (row) => {
+      const type = statusTypeMap[row.status] || 'default';
+      return h(NTag, {type, size: 'small', bordered: false}, {default: () => row.status})
+    }
+  },
+  {
+    title: '快捷操作', key: 'actions', align: 'center', render: (row) => h(NSpace, {justify: 'center'}, {
+      default: () => [
       h(NButton, { size: 'small', tertiary: true, onClick: () => onEdit(row) }, { default: () => '修改' }),
       h(NButton, { size: 'small', tertiary: true, type: 'error', onClick: () => askDelete(row) }, { default: () => '删除' })
     ] }) }
