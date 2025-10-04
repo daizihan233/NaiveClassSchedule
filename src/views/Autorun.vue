@@ -1,19 +1,13 @@
 <script setup>
 import {h, ref} from 'vue'
-import {NButton, NCard, NDataTable, NInput, NModal, NSpace, NTag, useMessage} from 'naive-ui'
+import {NButton, NCard, NDataTable, NSpace, NTag, useMessage} from 'naive-ui'
 import {useRequest} from 'vue-request'
 import {useRouter} from 'vue-router'
 import axios from 'axios'
 import {APISRV} from '@/global.js'
-import {
-  AutorunType,
-  fetchScopeTree,
-  getAutorunTypeLabel,
-  listTasks,
-  makeScopeLabelMap,
-  parseScope,
-  summarizeContent
-} from '@/api/autorun.js'
+import {AutorunType, getAutorunTypeLabel, listTasks, summarizeContent} from '@/api/autorun.js'
+import ScopeTags from '@/components/ScopeTags.vue'
+import ConfirmPasswordModal from '@/components/ConfirmPasswordModal.vue'
 
 // 排序：生效中 > 待生效 > 已过期；生效中内部按优先级降序，其他保持原顺序
 function sortAutorunRows(list) {
@@ -45,14 +39,6 @@ const { run, loading } = useRequest(listTasks, {
   onError: (e) => { console.error('[autorun] 获取失败', e); rows.value = [] }
 })
 
-// 作用域标签映射
-const scopeLabelMap = ref(new Map())
-useRequest(fetchScopeTree, {
-  manual: false,
-  onSuccess: (res) => { scopeLabelMap.value = makeScopeLabelMap(res?.data || []) },
-  onError: (e) => { console.warn('[autorun] 作用域菜单获取失败', e) }
-})
-
 const statusTypeMap = { '待生效': 'warning', '生效中': 'success', '已过期': 'error' }
 // 颜色映射：兼容数值/字符串两种 type 表达
 const typeTypeMapNum = {
@@ -77,34 +63,6 @@ function renderType(type) {
   return h(NTag, {size: 'small', bordered: false, type: color}, {default: () => label})
 }
 
-function fallbackScopeLabel(p) {
-  if (!p) return ''
-  if (p.level === 'school') return `${p.school} 学校`
-  if (p.level === 'grade') return `${p.school} 学校 ${p.grade} 级`
-  if (p.level === 'class') return `${p.school} 学校 ${p.grade} 级 ${p.class} 班`
-  return `${p.school || ''} ${p.grade ? p.grade + ' 级' : ''} ${p.class ? p.class + ' 班' : ''}`.trim()
-}
-
-function getScopeTagType(level) {
-  if (level === 'school') return 'info'
-  if (level === 'grade') return 'success'
-  if (level === 'class') return 'warning'
-  return 'default'
-}
-
-function renderScope(scopes) {
-  const list = Array.isArray(scopes) ? scopes : []
-  return h(NSpace, {size: 4, wrap: true}, {
-    default: () => list.map(v => {
-      if (v === 'ALL') return h(NTag, {size: 'small', bordered: false, type: 'info'}, {default: () => 'ALL'})
-      const p = parseScope(v)
-      const label = fallbackScopeLabel(p)
-      const tagType = getScopeTagType(p.level)
-      return h(NTag, {size: 'small', bordered: false, type: tagType}, {default: () => label})
-    })
-  })
-}
-
 function onEdit(row) {
   if (row.type === AutorunType.SCHEDULE || row.type === AutorunType.ALL || row.type === 'SCHEDULE' || row.type === 'ALL') {
     router.push(`/autorun/edit-schedule/${row.id}`)
@@ -116,19 +74,22 @@ function onEdit(row) {
 // 删除逻辑（需密码）
 const showDelete = ref(false)
 const deleting = ref(false)
-const deletePwd = ref('')
 const deleteId = ref('')
-function askDelete(row){ deleteId.value = row.id; deletePwd.value=''; showDelete.value = true }
-async function doDelete(){
+
+function askDelete(row) {
+  deleteId.value = row.id;
+  showDelete.value = true
+}
+
+async function doDelete(password) {
   if(!deleteId.value) return
   deleting.value = true
   try {
     await axios.delete(`${APISRV}/web/autorun/${deleteId.value}`,
-      { auth: { username: 'ElectronClassSchedule', password: deletePwd.value } }
+        {auth: {username: 'ElectronClassSchedule', password}}
     )
     message.success('已删除')
     showDelete.value = false
-    deletePwd.value = ''
     deleteId.value = ''
     run()
   } catch (e) {
@@ -144,7 +105,7 @@ async function doDelete(){
 const columns = [
   {title: '唯一ID', key: 'id', ellipsis: {tooltip: true}},
   {title: '类型', key: 'type', render: (row) => renderType(row.type)},
-  {title: '生效域', key: 'scope', render: (row) => renderScope(row.scope)},
+  {title: '生效域', key: 'scope', render: (row) => h(ScopeTags, {scopes: row.scope})},
   { title: '内容', key: 'content', ellipsis: { tooltip: true }, render: (row) => summarizeContent(row) },
   {title: '优先级', key: 'priority', align: 'center', render: (row) => renderPriorityTag(row.priority)},
   {
@@ -178,17 +139,13 @@ function goAddSchedule() { router.push('/autorun/add-schedule') }
 
     <n-data-table :columns="columns" :data="rows" :loading="loading" :pagination="false" />
 
-    <n-modal v-model:show="showDelete" preset="dialog" title="删除确认">
-      <template #header>你是入吗？</template>
-      <n-space vertical>
-        <n-input type="password" v-model:value="deletePwd" clearable placeholder="输入密码" />
-      </n-space>
-      <template #action>
-        <n-button type="error" :loading="deleting" @click="doDelete">确认删除</n-button>
-      </template>
-    </n-modal>
+    <confirm-password-modal
+        :loading="deleting"
+        :show="showDelete"
+        confirm-text="确认删除"
+        title="删除确认"
+        @confirm="doDelete"
+        @update:show="val=> showDelete = val"
+    />
   </n-card>
 </template>
-
-<style scoped>
-</style>

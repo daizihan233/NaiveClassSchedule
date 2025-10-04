@@ -12,7 +12,6 @@ import {
   NFormItem,
   NInput,
   NInputNumber,
-  NModal,
   NSelect,
   NSpace,
   NText,
@@ -26,21 +25,13 @@ import {
   fetchScopeTree,
   fetchSubjectsOptions,
   fetchTimetableOptions,
+  flattenScope,
   getTask,
-  parseScope,
   saveAutorun
 } from '@/api/autorun.js'
+import {applyDisabledToScopeOptions, findNodeByValue, normalizeScopes} from '@/utils/scope.js'
+import ConfirmPasswordModal from '@/components/ConfirmPasswordModal.vue'
 
-// 扁平化菜单树为下拉可多选项
-function flattenScope(nodes, prefix = '') {
-  const out = []
-  for (const n of nodes || []) {
-    const label = prefix ? `${prefix} / ${n.label}` : n.label
-    out.push({ label, value: n.value })
-    if (Array.isArray(n.children) && n.children.length) out.push(...flattenScope(n.children, label))
-  }
-  return out
-}
 const scopeSelectOptions = ref([])
 const scopeTreeRef = ref([])
 useRequest(fetchScopeTree, {
@@ -49,24 +40,6 @@ useRequest(fetchScopeTree, {
   onError: (e) => { console.warn('[scope] 获取失败', e); scopeSelectOptions.value = []; scopeTreeRef.value = [] }
 })
 
-function applyDisabledToScopeOptions(options, selected){
-  const arr = Array.isArray(options) ? options : []
-  const sel = Array.isArray(selected) ? selected : []
-  const schoolSet = new Set()
-  const gradeSet = new Set()
-  for (const v of sel){
-    const p = parseScope(v)
-    if (p.level === 'school') schoolSet.add(p.school)
-    else if (p.level === 'grade') gradeSet.add(`${p.school}/${p.grade}`)
-  }
-  return arr.map(opt => {
-    const p = parseScope(opt.value)
-    let disabled = false
-    if (p.level === 'grade') disabled = schoolSet.has(p.school)
-    else if (p.level === 'class') disabled = schoolSet.has(p.school) || gradeSet.has(`${p.school}/${p.grade}`)
-    return { ...opt, disabled }
-  })
-}
 const computedScopeOptions = computed(() => applyDisabledToScopeOptions(scopeSelectOptions.value, form.scope))
 
 const route = useRoute()
@@ -89,7 +62,7 @@ const form = reactive({
     date: null,
     timetableId: '', // 仅 ALL 使用
     schedule: {
-      periods: [] // 固定节次数，由 need 或模板决定
+      periods: []
     }
   }
 })
@@ -103,20 +76,26 @@ const needMap = computed(() => new Map(timetableOpts.value.map(o => [o.value, Nu
 function pickSchoolGrade(selected){
   const arr = Array.isArray(selected) ? selected : []
   // 优先班级
-  const clsVal = arr.find(v => parseScope(v).level==='class')
+  const clsVal = arr.find(v => v && v.split('/').length >= 3)
   if (clsVal) {
-    const p = parseScope(clsVal);
-    return {school: p.school, grade: p.grade, cls: p.class}
+    const [school, grade, cls] = clsVal.split('/')
+    return {school, grade, cls}
   }
   // 其次年级
-  const gradeVal = arr.find(v => parseScope(v).level==='grade')
-  if (gradeVal){ const p=parseScope(gradeVal); return { school:p.school, grade:p.grade } }
+  const gradeVal = arr.find(v => v && v.split('/').length === 2)
+  if (gradeVal) {
+    const [school, grade] = gradeVal.split('/');
+    return {school, grade}
+  }
   // 学校 -> 取第一个年级
-  const schoolVal = arr.find(v => parseScope(v).level==='school')
+  const schoolVal = arr.find(v => v && v.split('/').length === 1)
   if (schoolVal){
     const node = findNodeByValue(scopeTreeRef.value, schoolVal)
-    const firstGrade = (node?.children||[]).find(n => parseScope(n.value).level==='grade')
-    if (firstGrade){ const p=parseScope(firstGrade.value); return { school:p.school, grade:p.grade } }
+    const firstGrade = (node?.children || []).find(n => n.value && n.value.split('/').length === 2)
+    if (firstGrade) {
+      const [school, grade] = firstGrade.value.split('/');
+      return {school, grade}
+    }
   }
   return null
 }
@@ -171,32 +150,6 @@ watch(periodCount, (n)=>{
   form.content.schedule.periods = arr
 })
 
-// 作用域选择归并与选项加载
-function normalizeScopes(list) {
-  const arr = Array.isArray(list) ? Array.from(new Set(list)) : []
-  const schoolSet = new Set()
-  const gradeSet = new Set() // key: `${school}/${grade}`
-  for (const v of arr) {
-    const p = parseScope(v)
-    if (p.level === 'school') schoolSet.add(p.school)
-    else if (p.level === 'grade') gradeSet.add(`${p.school}/${p.grade}`)
-  }
-  const out = []
-  for (const v of arr) {
-    const p = parseScope(v)
-    if (p.level === 'school') {
-      out.push(v);
-    }
-    if (p.level === 'grade') {
-      if (!schoolSet.has(p.school)) out.push(v);
-    }
-    if (p.level === 'class') {
-      if (!schoolSet.has(p.school) && !gradeSet.has(`${p.school}/${p.grade}`)) out.push(v);
-    }
-  }
-  return out
-}
-
 function onScopeChange(v) {
   form.scope = normalizeScopes(v)
   loadGradeOptions()
@@ -209,7 +162,6 @@ watch(() => [form.type, form.content.timetableId], () => {
   if (form.type === AutorunType.ALL) loadGradeOptions()
 })
 
-// 校验
 function validateSchedule(){
   if (!Array.isArray(form.scope) || form.scope.length === 0) { message.warning('请选择生效域'); return false }
   if (!form.content.date) { message.warning('请选择日期'); return false }
@@ -219,14 +171,15 @@ function validateSchedule(){
   const list = form.content.schedule?.periods || []
   if (!Array.isArray(list) || list.length !== n) { message.warning('节次数与作息表不一致'); return false }
   for (const item of list) {
-    if (!item || !item.subject || String(item.subject).trim()==='') { message.warning('请为每一节选择科目'); return false }
+    if (!item || !item.subject || String(item.subject).trim() === '') {
+      message.warning('请为每一节选择科目');
+      return false
+    }
   }
   return true
 }
 
-// 自动填充
 const autoFilling = ref(false)
-
 async function autoFillSchedule() {
   const date = form.content.date
   const firstScope = Array.isArray(form.scope) && form.scope.length > 0 ? form.scope[0] : null
@@ -245,10 +198,9 @@ async function autoFillSchedule() {
       }))
       return
     }
-    // 兜底：若选到班级，尝试按周几模板
     const picked = pickSchoolGrade(form.scope)
     if (picked && picked.cls) {
-      const weekday = new Date(date).getDay() // 0..6
+      const weekday = new Date(date).getDay()
       const {data: tpl} = await fetchClassScheduleTemplateByWeekday({
         school: picked.school,
         grade: picked.grade,
@@ -271,9 +223,17 @@ async function autoFillSchedule() {
 // 保存（带密码 PUT /web/autorun/）
 const saving = ref(false)
 const showPwd = ref(false)
-const pwd = ref('')
-function openSave(){ showPwd.value = true }
-async function confirmSave(){
+
+function onCancel() {
+  router.back()
+}
+
+function openSave() {
+  if (!validateSchedule()) return
+  showPwd.value = true
+}
+
+async function confirmSave(pwd) {
   saving.value = true
   try {
     const payload = {
@@ -287,7 +247,7 @@ async function confirmSave(){
       }
     }
     if (isEdit.value && form.id) payload.id = form.id
-    await saveAutorun(payload, pwd.value)
+    await saveAutorun(payload, pwd)
     message.success('已保存')
     showPwd.value = false
     router.push('/autorun')
@@ -305,16 +265,17 @@ async function confirmSave(){
     <n-form ref="formRef" :model="form" label-placement="left" label-width="100">
       <n-alert type="warning" title="🚧 施工中 🚧" style="margin-bottom: 12px;">此页面功能仍在完善，部分接口对接中。</n-alert>
       <n-form-item v-if="isEdit" label="唯一ID">
-        <n-input v-model:value="form.id" disabled />
+        <n-input v-model:value="form.id" disabled/>
       </n-form-item>
       <n-form-item label="类型">
-        <n-select v-model:value="form.type" :options="scheduleTypeOptions" />
+        <n-select v-model:value="form.type" :options="scheduleTypeOptions"/>
       </n-form-item>
       <n-form-item label="生效域">
-        <n-select v-model:value="form.scope" multiple tag :options="computedScopeOptions" placeholder="选择生效范围，可多选" @update:value="onScopeChange" />
+        <n-select v-model:value="form.scope" :options="computedScopeOptions" multiple placeholder="选择生效范围，可多选"
+                  tag @update:value="onScopeChange"/>
       </n-form-item>
       <n-form-item label="优先级">
-        <n-input-number v-model:value="form.priority" :show-button="false" placeholder="执行顺序（数字）" />
+        <n-input-number v-model:value="form.priority" :show-button="false" placeholder="执行顺序（数字）"/>
       </n-form-item>
 
       <n-divider>类型相关参数</n-divider>
@@ -349,16 +310,14 @@ async function confirmSave(){
     </n-form>
   </n-card>
 
-  <!-- 保存密码弹窗 -->
-  <n-modal v-model:show="showPwd" preset="dialog" title="保存">
-    <n-space vertical>
-      <div>此操作需要密码</div>
-      <n-input type="password" v-model:value="pwd" clearable placeholder="输入密码" />
-    </n-space>
-    <template #action>
-      <n-button type="primary" :loading="saving" @click="confirmSave">确认保存</n-button>
-    </template>
-  </n-modal>
+  <confirm-password-modal
+      :loading="saving"
+      :show="showPwd"
+      confirm-text="确认保存"
+      title="保存"
+      @confirm="confirmSave"
+      @update:show="val=> showPwd = val"
+  />
 </template>
 
 <style scoped>

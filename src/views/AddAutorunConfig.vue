@@ -25,49 +25,19 @@ import {
   fetchCompYearPairs,
   fetchScopeTree,
   fetchTimetableOptions,
+  flattenScope,
   getTask,
-  parseScope,
   saveAutorun
 } from '@/api/autorun.js'
+import {applyDisabledToScopeOptions, normalizeScopes, parseGradePairsFromScopes} from '@/utils/scope.js'
+import ConfirmPasswordModal from '@/components/ConfirmPasswordModal.vue'
 
-// 扁平化工具
-function flattenScope(nodes, prefix = '') {
-  const out = []
-  for (const n of nodes || []) {
-    const label = prefix ? `${prefix} / ${n.label}` : n.label
-    out.push({ label, value: n.value })
-    if (Array.isArray(n.children) && n.children.length) {
-      out.push(...flattenScope(n.children, label))
-    }
-  }
-  return out
-}
 const scopeSelectOptions = ref([])
 useRequest(fetchScopeTree, {
   manual: false,
   onSuccess: (res) => { scopeSelectOptions.value = flattenScope(res?.data || []) },
   onError: (e) => { console.warn('[scope] 获取失败', e); scopeSelectOptions.value = [] }
 })
-
-function applyDisabledToScopeOptions(options, selected){
-  const arr = Array.isArray(options) ? options : []
-  const sel = Array.isArray(selected) ? selected : []
-  const schoolSet = new Set()
-  const gradeSet = new Set()
-  for (const v of sel){
-    const p = parseScope(v)
-    if (p.level === 'school') schoolSet.add(p.school)
-    else if (p.level === 'grade') gradeSet.add(`${p.school}/${p.grade}`)
-  }
-  return arr.map(opt => {
-    const p = parseScope(opt.value)
-    let disabled = false
-    if (p.level === 'grade') disabled = schoolSet.has(p.school)
-    else if (p.level === 'class') disabled = schoolSet.has(p.school) || gradeSet.has(`${p.school}/${p.grade}`)
-    return { ...opt, disabled }
-  })
-}
-const computedScopeOptions = computed(() => applyDisabledToScopeOptions(scopeSelectOptions.value, form.scope))
 
 const route = useRoute()
 const router = useRouter()
@@ -82,9 +52,9 @@ const formRef = ref(null)
 const form = reactive({
   id: '',
   type: AutorunType.COMPENSATION,
-  scope: [], // 多选
+  scope: [],
   priority: 0,
-  content: { date: null, useDate: null, timetableId: '' } // 将日期默认改为 null
+  content: {date: null, useDate: null, timetableId: ''}
 })
 
 function setFormFromData(d){
@@ -92,12 +62,10 @@ function setFormFromData(d){
   form.type = d.type
   form.scope = Array.isArray(d.scope) ? d.scope.slice() : []
   form.priority = d.priority || 0
-  // content
   const c = d.content || {}
   form.content = { date: c.date || null, useDate: c.useDate || null, timetableId: c.timetableId || '' }
 }
 
-// 读取编辑数据（仅在编辑模式）
 const { run: runGet, loading: loadingGet } = useRequest(() => getTask(route.params.id), {
   manual: true,
   onSuccess: (resp) => { const d = resp?.data; if (d) setFormFromData(d) },
@@ -108,7 +76,10 @@ if (isEdit.value) runGet()
 function validateBasic(){
   if (!Array.isArray(form.scope) || form.scope.length === 0) { message.warning('请选择生效域'); return false }
   if (form.type === AutorunType.COMPENSATION) {
-    if (!form.content.date || !form.content.useDate) { message.warning('请完整填写调休日期与被借用的上课日期'); return false }
+    if (!form.content.date || !form.content.useDate) {
+      message.warning('请完整填写调休日与被借用的上课日期');
+      return false
+    }
   } else if (form.type === AutorunType.TIMETABLE) {
     if (!form.content.date || !form.content.timetableId) { message.warning('请完整填写日期与作息表'); return false }
     if (timetableLoading.value === false && timetableOptionsDyn.value.length === 0) {
@@ -121,21 +92,20 @@ function validateBasic(){
   return true
 }
 
-// 保存（带密码 PUT /web/autorun/）
+// 保存（带密码）
 const saving = ref(false)
 const showPwd = ref(false)
-const pwd = ref('')
 function openSave(){
   if (!validateBasic()) return
   showPwd.value = true
 }
-async function confirmSave(){
+
+async function confirmSave(pwd) {
   saving.value = true
   try{
     const payload = { type: form.type, scope: form.scope, priority: form.priority, content: { ...form.content } }
     if (isEdit.value && form.id) payload.id = form.id
-      showPwd.value = false
-    await saveAutorun(payload, pwd.value)
+    await saveAutorun(payload, pwd)
     message.success('已保存')
     showPwd.value = false
     await router.push('/autorun')
@@ -149,33 +119,6 @@ async function confirmSave(){
 
 function onCancel() { router.back() }
 
-// 归并逻辑：选择学校则移除同校的年级/班级，选择年级则移除同年级的班级
-function normalizeScopes(list){
-  const arr = Array.isArray(list) ? Array.from(new Set(list)) : []
-  const schoolSet = new Set()
-  const gradeSet = new Set() // key: `${school}/${grade}`
-  // 收集已选父层级
-  for (const v of arr){
-    const p = parseScope(v)
-    if (p.level === 'school') schoolSet.add(p.school)
-    else if (p.level === 'grade') gradeSet.add(`${p.school}/${p.grade}`)
-  }
-  // 过滤子层级
-  const out = []
-  for (const v of arr){
-    const p = parseScope(v)
-    if (p.level === 'school') {
-      out.push(v);
-    }
-    if (p.level === 'grade') {
-      if (!schoolSet.has(p.school)) out.push(v);
-    }
-    if (p.level === 'class') {
-      if (!schoolSet.has(p.school) && !gradeSet.has(`${p.school}/${p.grade}`)) out.push(v);
-    }
-  }
-  return out
-}
 function onScopeChange(v){
   form.scope = normalizeScopes(v)
 }
@@ -185,31 +128,28 @@ const timetableOptionsDyn = ref([])
 const timetableLoading = ref(false)
 const timetableHint = ref('')
 
-function parseGradePairsFromScopes(scopes) {
-  const pairs = []
-  const seen = new Set()
-  for (const v of scopes || []) {
-    const p = parseScope(v)
-    if (p.level === 'grade' || p.level === 'class') {
-      const key = `${p.school}/${p.grade}`
-      if (!seen.has(key) && p.school && p.grade) {
-        pairs.push({school: p.school, grade: p.grade})
-        seen.add(key)
-      }
+// 帮助函数：计算多个年级作息表选项的交集
+function intersectTimetableOptions(results) {
+  let intersect = null
+  const labelMap = new Map()
+  for (const r of results) {
+    const values = new Set((r.options || []).map(o => o.value))
+    for (const o of (r.options || [])) {
+      if (!labelMap.has(o.value)) labelMap.set(o.value, o.label)
     }
+    if (intersect === null) intersect = values
+    else intersect = new Set([...intersect].filter(v => values.has(v)))
   }
-  return pairs
+  return [...(intersect || new Set())].map(v => ({label: labelMap.get(v) || String(v), value: v}))
 }
 
 async function refreshTimetableOptions() {
   timetableHint.value = ''
   timetableOptionsDyn.value = []
-  if (form.type !== AutorunType.TIMETABLE) {
-    return
-  }
+  if (form.type !== AutorunType.TIMETABLE) return
   const pairs = parseGradePairsFromScopes(form.scope)
   if (pairs.length === 0) {
-    timetableHint.value = '请选择具体年级/班级作为生效域以获取作息表选项'
+    timetableHint.value = '请选择具体年级/班级作为生效域以获取作息表选项';
     return
   }
   timetableLoading.value = true
@@ -220,25 +160,10 @@ async function refreshTimetableOptions() {
       timetableHint.value = '未获取到任何作息表选项'
       timetableOptionsDyn.value = []
     } else {
-      let intersect = null
-      const labelMap = new Map()
-      for (const r of ok) {
-        const values = new Set((r.options || []).map(o => o.value))
-        for (const o of (r.options || [])) {
-          if (!labelMap.has(o.value)) labelMap.set(o.value, o.label)
-        }
-        if (intersect === null) {
-          intersect = values
-        } else {
-          intersect = new Set([...intersect].filter(v => values.has(v)))
-        }
-      }
-      const list = [...(intersect || new Set())].map(v => ({label: labelMap.get(v) || String(v), value: v}))
+      const list = intersectTimetableOptions(ok)
       timetableOptionsDyn.value = list
       if (list.length === 0) timetableHint.value = '所选多个年级没有共同的作息表选项，请调整生效域'
-      if (form.content.timetableId && !list.some(o => o.value === form.content.timetableId)) {
-        form.content.timetableId = ''
-      }
+      if (form.content.timetableId && !list.some(o => o.value === form.content.timetableId)) form.content.timetableId = ''
     }
   } catch (e) {
     console.warn('[timetable options] 获取失败', e)
@@ -277,7 +202,6 @@ async function fillHolidayFromWorkday(){
 }
 watch(()=>[form.type, form.content.date, form.content.useDate], ([t, d, u])=>{
   if (t!==AutorunType.COMPENSATION) return
-  // 当只填了其中一个时尝试反推另一个
   if (u && !d) fillWorkdayFromHoliday()
   else if (d && !u) fillHolidayFromWorkday()
 })
@@ -285,9 +209,47 @@ watch(()=>[form.type, form.content.date, form.content.useDate], ([t, d, u])=>{
 // 批量导入全年调休
 const showImport = ref(false)
 const importYear = ref(new Date().getFullYear())
-const importAllScope = ref(true) // 若为 true 则作用域设为 ['ALL']
-const importPwd = ref('') // 导入批量保存用的密码（Basic Auth）
+const importAllScope = ref(true)
+const importPwd = ref('')
 const importing = ref(false)
+
+// 导入辅助：构建作用域、逐条处理 pairs
+function buildImportScope() {
+  if (importAllScope.value) return ['ALL']
+  return Array.isArray(form.scope) ? form.scope : []
+}
+
+async function processImportPairs(pairs, scopePayload) {
+  let ok = 0, fail = 0, aborted = false
+  for (const p of pairs) {
+    if (aborted) break
+    const {holiday, workday} = p || {}
+    if (!holiday || !workday) {
+      fail++;
+      continue
+    }
+    const payload = {
+      type: AutorunType.COMPENSATION,
+      scope: scopePayload,
+      priority: form.priority || 0,
+      content: {date: workday, useDate: holiday}
+    }
+    try {
+      await saveAutorun(payload, importPwd.value);
+      ok++
+    } catch (e) {
+      const status = e?.status || e?.response?.status;
+      if (status === 401) {
+        message.error('密码错误，已终止导入');
+        aborted = true;
+        break
+      }
+      fail++
+    }
+  }
+  return {ok, fail, aborted}
+}
+
 async function openImport(){ showImport.value = true }
 async function doImport(){
   importing.value = true
@@ -295,39 +257,24 @@ async function doImport(){
     const { data } = await fetchCompYearPairs(importYear.value)
     const pairs = Array.isArray(data?.pairs) ? data.pairs : []
     if (pairs.length===0){ message.warning('该年无调休数据'); return }
-    const scopePayload = importAllScope.value ? ['ALL'] : (Array.isArray(form.scope)? form.scope : [])
+    const scopePayload = buildImportScope()
     if (!importAllScope.value && scopePayload.length === 0){ message.warning('请选择生效域或勾选使用 ALL'); return }
-    let ok = 0, fail = 0
-    for (const p of pairs){
-      const holiday = p.holiday
-      const workday = p.workday
-      if (!holiday || !workday) { fail++; continue }
-      const payload = {
-        type: AutorunType.COMPENSATION,
-        scope: scopePayload,
-        priority: form.priority || 0,
-        content: { date: workday, useDate: holiday }
-      }
-      try{
-        await saveAutorun(payload, importPwd.value)
-        ok++
-      } catch(e){
-        const status = e?.status || e?.response?.status
-        if (status === 401){
-          message.error('密码错误，已终止导入')
-          throw e
-        }
-        fail++
-      }
+    const {ok, fail, aborted} = await processImportPairs(pairs, scopePayload)
+    if (ok > 0) {
+      const failPart = fail > 0 ? `，失败 ${fail} 条` : '';
+      message.success(`已导入 ${ok} 条${failPart}`)
+    } else if (!aborted) {
+      message.error('导入失败')
     }
-    if (ok>0) message.success(`已导入 ${ok} 条${fail?`，失败 ${fail} 条`:''}`)
-    else message.error('导入失败')
-    if (ok>0) showImport.value = false
-  } catch(e){
-    // 已在循环内分类提示，这里保持兜底
+    if (ok > 0 && !aborted) showImport.value = false
+  } catch (e) {
     if (!e?.response?.status) console.error(e)
-  } finally { importing.value = false }
+  } finally {
+    importing.value = false
+  }
 }
+
+const computedScopeOptions = computed(() => applyDisabledToScopeOptions(scopeSelectOptions.value, form.scope))
 </script>
 
 <template>
@@ -404,15 +351,14 @@ async function doImport(){
   </n-modal>
 
   <!-- 保存密码弹窗 -->
-  <n-modal v-model:show="showPwd" preset="dialog" title="保存">
-    <n-space vertical>
-      <div>此操作需要密码</div>
-      <n-input type="password" v-model:value="pwd" clearable placeholder="输入密码" />
-    </n-space>
-    <template #action>
-      <n-button type="primary" :loading="saving" @click="confirmSave">确认保存</n-button>
-    </template>
-  </n-modal>
+  <confirm-password-modal
+      :loading="saving"
+      :show="showPwd"
+      confirm-text="确认保存"
+      title="保存"
+      @confirm="confirmSave"
+      @update:show="val=> showPwd = val"
+  />
 </template>
 
 <style scoped>
