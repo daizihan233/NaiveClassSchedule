@@ -37,19 +37,25 @@ export function getTimetableLabel(id) {
   return found ? found.label : String(id)
 }
 
-// 作用域编码与树（基于 /web/menu 示例结构的伪数据）
+// 作用域编码与解析（新格式）：
+// 学校: "{school}" 例如 "39"
+// 年级: "{school}/{grade}" 例如 "39/2023"
+// 班级: "{school}/{grade}/{class}" 例如 "39/2023/1"
 export function encodeScope(level, school, grade, cls) {
-  if (level === 'school') return `school/${school}`
-  if (level === 'grade') return `grade/${school}/${grade}`
-  if (level === 'class') return `class/${school}/${grade}/${cls}`
+  if (level === 'school') return `${school}`
+  if (level === 'grade') return `${school}/${grade}`
+  if (level === 'class') return `${school}/${grade}/${cls}`
   return String(level)
 }
 export function parseScope(value) {
-  const parts = String(value || '').split('/')
-  const level = parts[0]
-  const school = parts[1]
-  const grade = parts[2]
-  const cls = parts[3]
+  const raw = String(value || '')
+  // 新格式：39 | 39/2023 | 39/2023/1
+  const parts = raw.split('/').filter(s => s !== '')
+  const [school, grade, cls] = parts
+  let level = 'unknown'
+  if (parts.length === 1) level = 'school'
+  else if (parts.length === 2) level = 'grade'
+  else if (parts.length >= 3) level = 'class'
   return { level, school, grade, class: cls }
 }
 

@@ -1,11 +1,35 @@
 <script setup>
-import { h, ref } from 'vue'
-import { NDataTable, NTag, NButton, NSpace, NCard, NModal, NInput, useMessage } from 'naive-ui'
-import { useRequest } from 'vue-request'
-import { useRouter } from 'vue-router'
+import {h, ref} from 'vue'
+import {NButton, NCard, NDataTable, NInput, NModal, NSpace, NTag, useMessage} from 'naive-ui'
+import {useRequest} from 'vue-request'
+import {useRouter} from 'vue-router'
 import axios from 'axios'
-import { APISRV } from '@/global.js'
-import { listTasks, getAutorunTypeLabel, summarizeContent, AutorunType, fetchScopeTree, makeScopeLabelMap } from '@/api/autorun.js'
+import {APISRV} from '@/global.js'
+import {
+  AutorunType,
+  fetchScopeTree,
+  getAutorunTypeLabel,
+  listTasks,
+  makeScopeLabelMap,
+  summarizeContent
+} from '@/api/autorun.js'
+
+// 排序：生效中 > 待生效 > 已过期；生效中内部按优先级降序，其他保持原顺序
+function sortAutorunRows(list) {
+  const order = {'生效中': 0, '待生效': 1, '已过期': 2}
+  return (Array.isArray(list) ? list : [])
+      .map((r, i) => ({__i: i, ...r}))
+      .sort((a, b) => {
+        const sa = order[a.status] ?? 9
+        const sb = order[b.status] ?? 9
+        if (sa !== sb) return sa - sb
+        // 生效中内部按优先级降序
+        if (sa === 0) return (Number(b.priority) || 0) - (Number(a.priority) || 0)
+        // 其他状态按原顺序
+        return a.__i - b.__i
+      })
+      .map(({__i, ...r}) => r)
+}
 
 const router = useRouter()
 const message = useMessage()
@@ -13,7 +37,10 @@ const message = useMessage()
 const rows = ref([])
 const { run, loading } = useRequest(listTasks, {
   manual: false,
-  onSuccess: (res) => { rows.value = res?.data ?? [] },
+  onSuccess: (res) => {
+    const data = res?.data ?? []
+    rows.value = sortAutorunRows(data)
+  },
   onError: (e) => { console.error('[autorun] 获取失败', e); rows.value = [] }
 })
 
