@@ -250,7 +250,7 @@ async function confirmSave(pwd) {
     await saveAutorun(payload, pwd)
     message.success('已保存')
     showPwd.value = false
-    router.push('/autorun')
+    await router.push('/autorun')
   } catch(e){
     const status = e?.status || e?.response?.status
     if (status === 401) message.error('你寻思寻思这密码它对吗？')

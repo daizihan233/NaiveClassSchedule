@@ -1,9 +1,21 @@
 <script setup>
 import {
-    NForm, NFormItem, NInput, NButton, NFlex, NCode, NCard, NStatistic, NModal, NSpace,
-    NSelect, useMessage, NCollapse, NCollapseItem
+  NButton,
+  NCard,
+  NCode,
+  NCollapse,
+  NCollapseItem,
+  NFlex,
+  NForm,
+  NFormItem,
+  NInput,
+  NModal,
+  NSelect,
+  NSpace,
+  NStatistic,
+  useMessage
 } from "naive-ui";
-import {reactive, ref, computed} from "vue";
+import {computed, reactive, ref} from "vue";
 import axios from "axios";
 import {APISRV} from "@/global.js";
 import {useRequest} from "vue-request";
@@ -277,12 +289,13 @@ function collapseAllDays(){ expandedDays.value = []; }
                               :rule="{ required: true }"
                           >
                               <n-space justify="space-around" size="large">
-                                  <n-select
+                                <!--suppress JSUnusedLocalSymbols -->
+                                <n-select
                                     placeholder="选一个吧"
                                     :options="subjectsOptionsLst"
-                                    v-for="(itex, indez) in dynamicForm.daily_class[index]['classList'][iten]"
+                                    v-for="(_, indez) in dynamicForm.daily_class[index]['classList'][iten]"
                                     v-model:value="dynamicForm.daily_class[index]['classList'][iten][indez]"
-                                  />
+                                />
                               </n-space>
                            </n-form-item>
                         </NCard>
