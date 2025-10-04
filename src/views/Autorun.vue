@@ -11,6 +11,7 @@ import {
   getAutorunTypeLabel,
   listTasks,
   makeScopeLabelMap,
+  parseScope,
   summarizeContent
 } from '@/api/autorun.js'
 
@@ -53,24 +54,59 @@ useRequest(fetchScopeTree, {
 })
 
 const statusTypeMap = { '待生效': 'warning', '生效中': 'success', '已过期': 'error' }
+// 颜色映射：兼容数值/字符串两种 type 表达
+const typeTypeMapNum = {
+  [AutorunType.COMPENSATION]: 'warning',
+  [AutorunType.TIMETABLE]: 'info',
+  [AutorunType.SCHEDULE]: 'success',
+  [AutorunType.ALL]: 'default'
+}
+const typeTypeMapStr = {'COMPENSATION': 'warning', 'TIMETABLE': 'info', 'SCHEDULE': 'success', 'ALL': 'default'}
+
+function getTypeLabelFlexible(type) {
+  if (typeof type === 'number') return getAutorunTypeLabel(type)
+  const map = {COMPENSATION: '调休', TIMETABLE: '作息表调整', SCHEDULE: '课程表调整', ALL: '全部调整'}
+  return map[type] || String(type)
+}
 
 function renderPriorityTag(priority) { return h(NTag, { size: 'small', bordered: false }, { default: () => String(priority) }) }
 
-function renderScope(labels) {
-  const list = Array.isArray(labels) ? labels : []
-  return h(NSpace, { size: 4, wrap: true }, {
-    default: () => list.map(s => h(NTag, { size: 'small', bordered: false }, { default: () => s }))
+function renderType(type) {
+  const color = typeof type === 'number' ? (typeTypeMapNum[type] || 'default') : (typeTypeMapStr[type] || 'default')
+  const label = getTypeLabelFlexible(type)
+  return h(NTag, {size: 'small', bordered: false, type: color}, {default: () => label})
+}
+
+function fallbackScopeLabel(p) {
+  if (!p) return ''
+  if (p.level === 'school') return `${p.school} 学校`
+  if (p.level === 'grade') return `${p.school} 学校 ${p.grade} 级`
+  if (p.level === 'class') return `${p.school} 学校 ${p.grade} 级 ${p.class} 班`
+  return `${p.school || ''} ${p.grade ? p.grade + ' 级' : ''} ${p.class ? p.class + ' 班' : ''}`.trim()
+}
+
+function getScopeTagType(level) {
+  if (level === 'school') return 'info'
+  if (level === 'grade') return 'success'
+  if (level === 'class') return 'warning'
+  return 'default'
+}
+
+function renderScope(scopes) {
+  const list = Array.isArray(scopes) ? scopes : []
+  return h(NSpace, {size: 4, wrap: true}, {
+    default: () => list.map(v => {
+      if (v === 'ALL') return h(NTag, {size: 'small', bordered: false, type: 'info'}, {default: () => 'ALL'})
+      const p = parseScope(v)
+      const label = fallbackScopeLabel(p)
+      const tagType = getScopeTagType(p.level)
+      return h(NTag, {size: 'small', bordered: false, type: tagType}, {default: () => label})
+    })
   })
 }
 
-function getScopeLabels(scopeArr) {
-  const map = scopeLabelMap.value
-  const list = Array.isArray(scopeArr) ? scopeArr : []
-  return list.map(v => map.get(v) || v)
-}
-
 function onEdit(row) {
-  if (row.type === AutorunType.SCHEDULE || row.type === AutorunType.ALL) {
+  if (row.type === AutorunType.SCHEDULE || row.type === AutorunType.ALL || row.type === 'SCHEDULE' || row.type === 'ALL') {
     router.push(`/autorun/edit-schedule/${row.id}`)
   } else {
     router.push(`/autorun/edit/${row.id}`)
@@ -107,12 +143,8 @@ async function doDelete(){
 
 const columns = [
   {title: '唯一ID', key: 'id', ellipsis: {tooltip: true}},
-  {
-    title: '类型',
-    key: 'type',
-    render: (row) => h(NTag, {size: 'small', bordered: false}, {default: () => getAutorunTypeLabel(row.type)})
-  },
-  {title: '生效域', key: 'scope', render: (row) => renderScope(getScopeLabels(row.scope))},
+  {title: '类型', key: 'type', render: (row) => renderType(row.type)},
+  {title: '生效域', key: 'scope', render: (row) => renderScope(row.scope)},
   { title: '内容', key: 'content', ellipsis: { tooltip: true }, render: (row) => summarizeContent(row) },
   {title: '优先级', key: 'priority', align: 'center', render: (row) => renderPriorityTag(row.priority)},
   {
@@ -157,3 +189,6 @@ function goAddSchedule() { router.push('/autorun/add-schedule') }
     </n-modal>
   </n-card>
 </template>
+
+<style scoped>
+</style>
