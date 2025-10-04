@@ -243,16 +243,17 @@ export async function fetchClassScheduleTemplateByWeekday({ school, grade, cls, 
     const resp = await axios.get(`${APISRV}/web/config/${school}/${grade}/${cls}/schedule`)
     const data = resp?.data || {}
     const days = Array.isArray(data.daily_class) ? data.daily_class : []
-    const day = days[weekday] || { classList: [] }
+    const day = days[weekday] || {classList: [], timetable: ''}
     const classList = Array.isArray(day.classList) ? day.classList : []
+    const timetableLabel = String(day.timetable || '')
     const periods = classList.map((arr, idx) => {
       const subject = Array.isArray(arr) && arr.length > 0 ? String(arr[0] ?? '') : ''
       return { no: idx + 1, subject }
     })
-    return { data: { periods } }
+    return {data: {periods, timetableLabel}}
   } catch (e) {
     console.warn('[autorun] fetchClassScheduleTemplateByWeekday fallback', e)
-    return { data: { periods: [] } }
+    return {data: {periods: [], timetableLabel: ''}}
   }
 }
 

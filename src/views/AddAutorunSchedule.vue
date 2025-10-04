@@ -70,7 +70,25 @@ const form = reactive({
 // 作息表与学科选项
 const timetableOpts = ref([])
 const subjectsOpts = ref([])
-const needMap = computed(() => new Map(timetableOpts.value.map(o => [o.value, Number(o.need)||0])))
+// 需要两张映射表：value->need（ALL 下用），label->need（根据班级当天作息表 label 推断）
+const needByValueMap = computed(() => new Map(timetableOpts.value.map(o => [o.value, Number(o.need) || 0])))
+const needByLabelMap = ref(new Map())
+
+// 将后端返回的 need 转为真实节次数：need < 0 视为 0 节，否则 need + 1
+function toCount(rawNeed) {
+  const n = Number(rawNeed)
+  if (!Number.isFinite(n)) return 0
+  return n < 0 ? 0 : n + 1
+}
+
+// 自动检测的“当日作息表”结果（存原始 need 值）
+const detectedNeedRaw = ref(null) // number | null
+const detectedTimetableId = ref('')
+const detectedTimetableLabel = computed(() => {
+  const opt = timetableOpts.value.find(o => o.value === detectedTimetableId.value)
+  return opt ? opt.label : ''
+})
+const isRestDay = computed(() => detectedNeedRaw.value !== null && toCount(detectedNeedRaw.value) === 0)
 
 // 根据所选作用域推断 (school, grade)
 function pickSchoolGrade(selected){
@@ -102,12 +120,18 @@ function pickSchoolGrade(selected){
 
 async function loadGradeOptions(){
   const pair = pickSchoolGrade(form.scope)
-  if (!pair){ timetableOpts.value = []; subjectsOpts.value = []; return }
-  const [{ options }, { options: subs }] = await Promise.all([
+  if (!pair) {
+    timetableOpts.value = [];
+    subjectsOpts.value = [];
+    needByLabelMap.value = new Map();
+    return
+  }
+  const [{options, needMap: labelNeedMap}, {options: subs}] = await Promise.all([
     fetchTimetableOptions(pair.school, pair.grade),
     fetchSubjectsOptions(pair.school, pair.grade)
   ])
   timetableOpts.value = options
+  needByLabelMap.value = labelNeedMap instanceof Map ? labelNeedMap : new Map(options.map(o => [o.label, Number(o.need) || 0]))
   subjectsOpts.value = subs
   if (form.type===AutorunType.ALL && !form.content.timetableId && timetableOpts.value.length>0){
     form.content.timetableId = timetableOpts.value[0].value
@@ -136,10 +160,15 @@ if (isEdit.value) runGet()
 
 const periodCount = computed(()=>{
   if (form.type===AutorunType.ALL){
-    return needMap.value.get(form.content.timetableId) || 0
+    const needById = needByValueMap.value.get(form.content.timetableId)
+    if (needById !== undefined) return toCount(needById)
+    if (detectedNeedRaw.value !== null) return toCount(detectedNeedRaw.value)
+    return 0
   }
+  // SCHEDULE 类型：优先使用已检测到的当日作息表节次数
+  if (detectedNeedRaw.value !== null) return toCount(detectedNeedRaw.value)
   if (form.content.schedule.periods.length>0) return form.content.schedule.periods.length
-  return timetableOpts.value.length>0 ? (Number(timetableOpts.value[0].need)||0) : 0
+  return timetableOpts.value.length > 0 ? toCount(Number(timetableOpts.value[0].need) || 0) : 0
 })
 
 watch(periodCount, (n)=>{
@@ -152,12 +181,24 @@ watch(periodCount, (n)=>{
   form.content.schedule.periods = arr
 })
 
+// 日期变化时重置自动检测结果
+watch(() => form.content.date, () => {
+  detectedNeedRaw.value = null
+  detectedTimetableId.value = ''
+})
+
 function onScopeChange(v) {
   form.scope = normalizeScopes(v)
+  // 重置自动检测结果
+  detectedNeedRaw.value = null
+  detectedTimetableId.value = ''
   loadGradeOptions()
 }
 
 watch(() => form.scope.slice(), () => {
+  // 重置自动检测结果
+  detectedNeedRaw.value = null
+  detectedTimetableId.value = ''
   loadGradeOptions()
 })
 watch(() => [form.type, form.content.timetableId], () => {
@@ -169,7 +210,14 @@ function validateSchedule(){
   if (!form.content.date) { message.warning('请选择日期'); return false }
   if (form.type===AutorunType.ALL && !form.content.timetableId) { message.warning('请选择作息表'); return false }
   const n = periodCount.value
-  if (n<=0) { message.warning('当前作息表无节次'); return false }
+  if (n === 0) { // 休息日，无需课程
+    form.content.schedule.periods = []
+    return true
+  }
+  if (n < 0) {
+    message.warning('当前作息表无节次');
+    return false
+  }
   const list = form.content.schedule?.periods || []
   if (!Array.isArray(list) || list.length !== n) { message.warning('节次数与作息表不一致'); return false }
   for (const item of list) {
@@ -257,32 +305,51 @@ async function autoFillSchedule() {
     for (let idx = 0; idx < results.length; idx++) {
       const r = results[idx]
       if (r.status === 'fulfilled') {
-        const periods = Array.isArray(r.value?.data?.periods) ? r.value.data.periods : []
-        ok.push({cls: classList[idx], periods})
+        const data = r.value?.data || {}
+        const periods = Array.isArray(data.periods) ? data.periods : []
+        const timetableLabel = String(data.timetableLabel || '')
+        const needRaw = timetableLabel ? Number(needByLabelMap.value.get(timetableLabel)) : -1 // -1 代表休息日 -> 0 节
+        const option = timetableLabel ? timetableOpts.value.find(o => o.label === timetableLabel) : null
+        ok.push({cls: classList[idx], periods, timetableLabel, needRaw, option})
       }
     }
     if (ok.length === 0) {
       message.error('未能获取到任何班级的课程模板');
       return
     }
-    const counts = new Set(ok.map(x => x.periods.length))
+    // 按“实际节次数”判定冲突（统一转换为 count）
+    const counts = new Set(ok.map(x => toCount(x.needRaw)))
     if (counts.size > 1) {
-      // 组装冲突详情
       const detail = ok
-          .map(x => `${x.cls.value}：${x.periods.length} 节`)
+          .map(x => `${x.cls.value}：作息表“${x.timetableLabel || '未知'}” -> ${toCount(x.needRaw)} 节`)
           .join('\n')
-      conflictMsg.value = `所选作用域内不同班级在该日的节次数不一致，无法自动填充：\n${detail}`
+      conflictMsg.value = `所选作用域内不同班级在该日的作息表节次数不一致，无法自动填充：\n${detail}`
       showConflict.value = true
       return
     }
     // 随机取一个成功的班级用于填充
     const pickIdx = Math.floor(Math.random() * ok.length)
     const chosen = ok[pickIdx]
+    // 1) 自动填充课程
     form.content.schedule.periods = chosen.periods.map((p, idx) => ({
       no: Number(p.no) || idx + 1,
       subject: String(p.subject || '')
     }))
-    message.success(`已按班级 ${chosen.cls.value} 自动填充`)
+    // 2) 根据“API 返回的作息表 label”确定 needRaw 与（在 ALL 下）作息表 ID
+    const needRaw = Number.isFinite(chosen.needRaw) ? chosen.needRaw : -1
+    detectedNeedRaw.value = needRaw
+    if (chosen.option) {
+      detectedTimetableId.value = chosen.option.value
+      if (form.type === AutorunType.ALL) {
+        form.content.timetableId = chosen.option.value
+      }
+    } else {
+      detectedTimetableId.value = ''
+      if (form.type === AutorunType.ALL) {
+        message.warning('未能从班级配置中识别出当日作息表，请手动选择作息表');
+      }
+    }
+    message.success(`已按班级 ${chosen.cls.value} 自动填充，并基于“${chosen.timetableLabel || '未知'}”作息表（${toCount(needRaw)} 节）调整表单`)
   } finally {
     autoFilling.value = false
   }
@@ -359,12 +426,21 @@ async function confirmSave(pwd) {
       <n-form-item label="对应日期">
         <n-date-picker v-model:formatted-value="form.content.date" type="date" value-format="yyyy-MM-dd" />
         <n-button size="small" style="margin-left:8px" :loading="autoFilling" @click="autoFillSchedule">自动填充</n-button>
+        <n-text v-if="detectedNeedRaw !== null && !detectedTimetableLabel" depth="3" style="margin-left:8px;">
+          已检测到节次数：{{ toCount(detectedNeedRaw) }}（无法唯一匹配作息表）
+        </n-text>
+        <n-text v-if="detectedNeedRaw !== null && detectedTimetableLabel" depth="3" style="margin-left:8px;">
+          已检测到当日作息表：{{ detectedTimetableLabel }}（共 {{ toCount(detectedNeedRaw) }} 节）
+        </n-text>
       </n-form-item>
 
       <n-form-item label="课程表（节次/科目）">
         <n-card size="small" style="width:100%" :bordered="true">
           <n-space vertical style="width:100%">
-            <n-text v-if="periodCount===0" depth="3">请先选择作息表或等待模板加载</n-text>
+            <n-text v-if="periodCount===0" depth="3">{{
+                isRestDay ? '检测到休息日，无需填写课程' : '请先选择作息表或等待模板加载'
+              }}
+            </n-text>
             <div v-for="i in periodCount" :key="i" style="display:flex; align-items:center; gap:12px; width:100%">
               <div style="width:60px; text-align:right;">第 {{ i }} 节</div>
               <n-select v-model:value="form.content.schedule.periods[i-1].subject" :options="subjectsOpts" placeholder="选择科目" style="flex:1;" />
