@@ -24,10 +24,10 @@ import {
   fetchCompByWorkday,
   fetchCompYearPairs,
   fetchScopeTree,
+  fetchTimetableOptions,
   getTask,
   parseScope,
-  saveAutorun,
-  timetableOptions
+  saveAutorun
 } from '@/api/autorun.js'
 
 // 扁平化工具
@@ -111,6 +111,10 @@ function validateBasic(){
     if (!form.content.date || !form.content.useDate) { message.warning('请完整填写调休日期与被借用的上课日期'); return false }
   } else if (form.type === AutorunType.TIMETABLE) {
     if (!form.content.date || !form.content.timetableId) { message.warning('请完整填写日期与作息表'); return false }
+    if (timetableLoading.value === false && timetableOptionsDyn.value.length === 0) {
+      message.warning('未找到可用作息表，请选择具体年级/班级作为生效域');
+      return false
+    }
   } else {
     message.warning('仅支持在本页面编辑 调休/作息表 类型'); return false
   }
@@ -175,6 +179,79 @@ function normalizeScopes(list){
 function onScopeChange(v){
   form.scope = normalizeScopes(v)
 }
+
+// ---------- 作息表选项（按 scope 动态拉取） ----------
+const timetableOptionsDyn = ref([])
+const timetableLoading = ref(false)
+const timetableHint = ref('')
+
+function parseGradePairsFromScopes(scopes) {
+  const pairs = []
+  const seen = new Set()
+  for (const v of scopes || []) {
+    const p = parseScope(v)
+    if (p.level === 'grade' || p.level === 'class') {
+      const key = `${p.school}/${p.grade}`
+      if (!seen.has(key) && p.school && p.grade) {
+        pairs.push({school: p.school, grade: p.grade})
+        seen.add(key)
+      }
+    }
+  }
+  return pairs
+}
+
+async function refreshTimetableOptions() {
+  timetableHint.value = ''
+  timetableOptionsDyn.value = []
+  if (form.type !== AutorunType.TIMETABLE) {
+    return
+  }
+  const pairs = parseGradePairsFromScopes(form.scope)
+  if (pairs.length === 0) {
+    timetableHint.value = '请选择具体年级/班级作为生效域以获取作息表选项'
+    return
+  }
+  timetableLoading.value = true
+  try {
+    const results = await Promise.allSettled(pairs.map(p => fetchTimetableOptions(p.school, p.grade)))
+    const ok = results.filter(r => r.status === 'fulfilled').map(r => r.value)
+    if (ok.length === 0) {
+      timetableHint.value = '未获取到任何作息表选项'
+      timetableOptionsDyn.value = []
+    } else {
+      let intersect = null
+      const labelMap = new Map()
+      for (const r of ok) {
+        const values = new Set((r.options || []).map(o => o.value))
+        for (const o of (r.options || [])) {
+          if (!labelMap.has(o.value)) labelMap.set(o.value, o.label)
+        }
+        if (intersect === null) {
+          intersect = values
+        } else {
+          intersect = new Set([...intersect].filter(v => values.has(v)))
+        }
+      }
+      const list = [...(intersect || new Set())].map(v => ({label: labelMap.get(v) || String(v), value: v}))
+      timetableOptionsDyn.value = list
+      if (list.length === 0) timetableHint.value = '所选多个年级没有共同的作息表选项，请调整生效域'
+      if (form.content.timetableId && !list.some(o => o.value === form.content.timetableId)) {
+        form.content.timetableId = ''
+      }
+    }
+  } catch (e) {
+    console.warn('[timetable options] 获取失败', e)
+    timetableHint.value = '获取作息表选项失败'
+    timetableOptionsDyn.value = []
+  } finally {
+    timetableLoading.value = false
+  }
+}
+
+watch(() => [form.type, JSON.stringify(form.scope)], () => {
+  refreshTimetableOptions()
+})
 
 // 调休：自动互相反推
 const autoFilling = ref(false)
@@ -292,7 +369,9 @@ async function doImport(){
           <n-date-picker v-model:formatted-value="form.content.date" type="date" value-format="yyyy-MM-dd" />
         </n-form-item>
         <n-form-item label="作息表">
-          <n-select v-model:value="form.content.timetableId" :options="timetableOptions" placeholder="选择作息表" />
+          <n-select v-model:value="form.content.timetableId" :loading="timetableLoading" :options="timetableOptionsDyn"
+                    placeholder="先选择包含年级/班级的生效域后再选择作息表"/>
+          <div v-if="timetableHint" style="font-size:12px;color:#888;margin-top:6px;">{{ timetableHint }}</div>
         </n-form-item>
       </template>
 

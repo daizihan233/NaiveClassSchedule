@@ -216,10 +216,16 @@ export async function deleteTask(id) {
 // 参数：payload 为任务对象，password 为 Basic Auth 密码
 // 返回：后端响应 data 原样透传
 export async function saveAutorun(payload, password){
-  // 仅处理调休类型
+  // 仅处理调休类型与作息表调整类型
   if (payload && payload.type === AutorunType.COMPENSATION){
     const resp = await axios.put(`${APISRV}/web/autorun/compensation`, payload, {
       auth: { username: 'ElectronClassSchedule', password }
+    })
+    return resp?.data
+  }
+  if (payload && payload.type === AutorunType.TIMETABLE) {
+    const resp = await axios.put(`${APISRV}/web/autorun/timetable`, payload, {
+      auth: {username: 'ElectronClassSchedule', password}
     })
     return resp?.data
   }
@@ -325,4 +331,9 @@ export async function fetchCompYearPairs(year) {
   } catch (e) {
     return { data: { year, pairs: [] } }
   }
+}
+
+// 简单延迟工具（用于伪数据路径）
+async function delay(ms = 150) {
+  await new Promise(r => setTimeout(r, ms))
 }
