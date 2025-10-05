@@ -35,6 +35,18 @@ export function getTimetableLabel(id) {
   return found ? found.label : String(id)
 }
 
+// 将后端的类型字符串映射为本地数值枚举
+export function decodeAutorunType(t) {
+  if (typeof t === 'number') return t
+  const s = String(t || '').toUpperCase()
+  if (s === 'COMPENSATION') return AutorunType.COMPENSATION
+  if (s === 'TIMETABLE') return AutorunType.TIMETABLE
+  if (s === 'SCHEDULE') return AutorunType.SCHEDULE
+  if (s === 'ALL') return AutorunType.ALL
+  // 默认返回原值（可能是未知类型字符串）
+  return t
+}
+
 export function encodeScope(level, school, grade, cls) {
   if (level === 'school') return `${school}`
   if (level === 'grade') return `${school}/${grade}`
@@ -160,7 +172,7 @@ export async function listTasks() {
     else if (t.scope) scope = [t.scope]
     return {
       id,
-      type: t.type,
+      type: t.type, // 列表页渲染已兼容字符串或数字
       scope,
       content: t.content || {},
       priority: Number(t.priority) || 0,
@@ -171,10 +183,38 @@ export async function listTasks() {
 }
 
 export async function getTask(id) {
-  await delay()
-  const found = store.find(t => t.id === id)
-  if (!found) { const error = new Error('Not Found'); error.status = 404; throw error }
-  return { data: JSON.parse(JSON.stringify(found)) }
+  try {
+    const resp = await axios.get(`${APISRV}/web/autorun/hash/${id}`)
+    const d = resp?.data?.data || resp?.data
+    if (!d) throw new Error('Empty')
+    const scope = Array.isArray(d.scope) ? d.scope : (d.scope ? [d.scope] : [])
+    const type = decodeAutorunType(d.type)
+    const content = d.content || {}
+    return {
+      data: {
+        id: d.id || id,
+        type,
+        scope,
+        content,
+        priority: Number(d.priority) || 0,
+        status: d.status || '待生效'
+      }
+    }
+  } catch (e) {
+    // 回退到内置存储，避免编辑页完全不可用
+    try {
+      await delay()
+      const found = store.find(t => t.id === id)
+      if (!found) {
+        const error = new Error('Not Found');
+        error.status = 404;
+        throw error
+      }
+      return {data: JSON.parse(JSON.stringify(found))}
+    } catch (inner) {
+      throw e
+    }
+  }
 }
 
 export async function saveAutorun(payload, password){

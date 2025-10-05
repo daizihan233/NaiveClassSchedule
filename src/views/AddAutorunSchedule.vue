@@ -2,8 +2,9 @@
 import {computed, reactive, ref, watch} from 'vue'
 import {useRoute, useRouter} from 'vue-router'
 import {useRequest} from 'vue-request'
+import axios from 'axios'
+import {APISRV} from '@/global.js'
 import {
-  NAlert,
   NButton,
   NCard,
   NDatePicker,
@@ -385,7 +386,12 @@ async function confirmSave(pwd) {
         schedule: { periods: form.content.schedule.periods.map(p => ({ no: Number(p.no)||0, subject: String(p.subject||'') })) }
       }
     }
-    if (isEdit.value && form.id) payload.id = form.id
+    // 编辑：先删旧再提交新规则
+    if (isEdit.value && form.id) {
+      await axios.delete(`${APISRV}/web/autorun/${form.id}`, {
+        auth: {username: 'ElectronClassSchedule', password: pwd}
+      })
+    }
     await saveAutorun(payload, pwd)
     message.success('已保存')
     showPwd.value = false
@@ -402,8 +408,8 @@ async function confirmSave(pwd) {
 <template>
   <n-card :title="title" :bordered="false">
     <n-form ref="formRef" :model="form" label-placement="left" label-width="100">
-      <n-alert type="warning" title="🚧 施工中 🚧" style="margin-bottom: 12px;">此页面功能仍在完善，部分接口对接中。</n-alert>
-      <n-form-item v-if="isEdit" label="唯一ID">
+
+    <n-form-item v-if="isEdit" label="唯一ID">
         <n-input v-model:value="form.id" disabled/>
       </n-form-item>
       <n-form-item label="类型">
